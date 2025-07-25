@@ -1,46 +1,41 @@
-from db import get_db_pool
-import aiomysql
-import httpx
+# src/service/recipe_service.py
+from fastapi import APIRouter, Query
+import requests
+import urllib.parse
 
-# 여기 내가 발급받은 API 키를 직접 입력
-API_KEY = "daca2ae71503468ab75a"
+router = APIRouter()
+API_KEY = "daca2ae71503468ab75a"  # 반드시 본인 발급받은 유효한 키로 교체하세요!
 
-class RecipeService:
+@router.get("/recipe/")
+def get_recipe(food_name: str = Query(..., min_length=1, description="검색할 음식명")):
+    encoded_food_name = urllib.parse.quote(food_name)
+    url = (
+        f"https://openapi.foodsafetykorea.go.kr/api/"
+        f"{API_KEY}/COOKRCP01/json/1/20/RCP_NM={encoded_food_name}"
+    )
+    try:
+        print(f"[simple_api] 요청 URL: {url}")
+        res = requests.get(url, timeout=5)
+        print(f"[simple_api] 응답 상태 코드: {res.status_code}")
+        print(f"[simple_api] 응답 텍스트 일부:\n{res.text[:500]}")  # 최대 500자 로그
 
-    async def get_recipes(self):
-        """DB에서 레시피 전체 리스트를 조회해 반환"""
-        pool = await get_db_pool()
-        async with pool.acquire() as conn:
-            async with conn.cursor(aiomysql.DictCursor) as cur:
-                await cur.execute("SELECT recipe_id, title, summary, img_url FROM Recipe")
-                recipes = await cur.fetchall()
-                return recipes
+        if res.status_code == 200:
+            try:
+                data = res.json()
+            except Exception as json_err:
+                print(f"[simple_api] JSON 파싱 오류: {json_err}")
+                return []
 
-    async def get_recipe(self, recipe_id: int):
-        """특정 레시피 상세 조회"""
-        pool = await get_db_pool()
-        async with pool.acquire() as conn:
-            async with conn.cursor(aiomysql.DictCursor) as cur:
-                await cur.execute("SELECT * FROM Recipe WHERE recipe_id=%s", (recipe_id,))
-                recipe = await cur.fetchone()
-                return recipe
+            if "COOKRCP01" in data:
+                rows = data["COOKRCP01"].get("row", [])
+            else:
+                rows = []
 
-    async def get_external_recipes(self, query: str):
-        """외부 API 호출: 하드코딩된 API_KEY를 사용"""
-        if not API_KEY:
-            raise Exception("API 키가 설정되어 있지 않습니다.")
-
-        url = "https://openapi.foodsafetykorea.go.kr/api/"   # 실제 API URL로 바꾸기
-        headers = {
-            "Authorization": f"Bearer {API_KEY}"          # API 헤더 필요 시 맞게 변경
-        }
-        params = {
-            "query": query,
-            "number": 10
-        }
-
-        async with httpx.AsyncClient() as client:
-            response = await client.get(url, headers=headers, params=params)
-            response.raise_for_status()
-            data = response.json()
-            return data.get("results", [])
+            print(f"[simple_api] 검색어 '{food_name}' 결과 개수: {len(rows)}")
+            return rows
+        else:
+            print(f"[simple_api] HTTP 에러 응답 코드: {res.status_code}")
+            return []
+    except Exception as e:
+        print(f"[simple_api] 요청 중 예외 발생: {e}")
+        return []
