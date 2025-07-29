@@ -1,42 +1,32 @@
-from fastapi import APIRouter, Query
 import requests
 import urllib.parse
 
-router = APIRouter()
-
-API_KEY = "daca2ae71503468ab75a"  # 본인 유효키로 교체하세요
+API_KEY = "daca2ae71503468ab75a"  # 본인 키로 교체하세요
 
 def get_recipe(food_name: str):
     encoded_food_name = urllib.parse.quote(food_name)
-    url = (
-        f"https://openapi.foodsafetykorea.go.kr/api/"
-        f"{API_KEY}/COOKRCP01/json/1/20/RCP_NM={encoded_food_name}"
-    )
+    url = f"https://openapi.foodsafetykorea.go.kr/api/{API_KEY}/COOKRCP01/json/1/20/RCP_NM={encoded_food_name}"
+    print(f"[get_recipe] Request URL: {url}")
+
     try:
         res = requests.get(url, timeout=5)
+        print(f"[get_recipe] Status code: {res.status_code}")
         if res.status_code == 200:
             data = res.json()
             rows = data.get("COOKRCP01", {}).get("row", [])
+            print(f"[get_recipe] Retrieved {len(rows)} recipes")
             return rows
         else:
+            print(f"[get_recipe] API error status: {res.status_code}")
             return []
     except Exception as e:
-        print(f"API 호출 오류: {e}")
+        print(f"[get_recipe] Exception: {e}")
         return []
 
-def get_recipe_detail(id: int):
-    url = (
-        f"https://openapi.foodsafetykorea.go.kr/api/"
-        f"{API_KEY}/COOKRCP01/json/1/1/RCP_SEQ={id}"
-    )
-    try:
-        res = requests.get(url, timeout=5)
-        if res.status_code == 200:
-            data = res.json()
-            rows = data.get("COOKRCP01", {}).get("row", [])
-            return rows[0] if rows else None
-        else:
-            return None
-    except Exception as e:
-        print(f"API 호출 오류: {e}")
-        return None
+def get_recipe_detail(id: int, food_name: str):
+    # 음식명으로 리스트 받아서 id 기준 필터링
+    rows = get_recipe(food_name)
+    for recipe in rows:
+        if str(recipe.get("RCP_SEQ")) == str(id):
+            return recipe
+    return None
