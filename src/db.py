@@ -4,8 +4,8 @@ DB_CONFIG = {
     "host": "localhost",
     "port": 3306,
     "user": "root",
-    "password": "0000",
-    "db": "db_test",
+    "password": "7414",
+    "db": "airecipe",
 }
 
 async def get_db_pool():

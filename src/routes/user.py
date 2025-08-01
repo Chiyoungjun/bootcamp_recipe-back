@@ -13,10 +13,14 @@ async def get_users():
         raise HTTPException(status_code=500, detail=str(e))
 
 @router.get("/{user_id}")
-async def get_one_user(user_id: int):
+async def get_one_user(user_id: str):
     try:
         data = await service.get_one_user(user_id)
+        if data is None:
+            raise HTTPException(status_code=404, detail="User not found")
         return {"status": 200, "message": "success", "data": data}
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -27,6 +31,7 @@ async def sign_in(request: Request):
         data = await service.sign_in(user_info)
         return {"status": 200, "message": "success", "data": data}
     except Exception as e:
+        # 로그인 실패 시 401 Unauthorized 반환
         raise HTTPException(status_code=401, detail=str(e))
 
 @router.post("/signup")
@@ -36,4 +41,14 @@ async def sign_up(request: Request):
         data = await service.sign_up(user_info)
         return {"status": 200, "message": "success", "data": data}
     except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+@router.patch("/{user_id}")
+async def update_user(user_id: str, request: Request):
+    update_info = await request.json()
+    try:
+        data = await service.update_user(user_id, update_info)
+        return {"status": 200, "message": "success", "data": data}
+    except Exception as e:
+        # 유효하지 않은 요청일 경우 400 리턴
         raise HTTPException(status_code=400, detail=str(e))
