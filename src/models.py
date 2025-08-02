@@ -1,9 +1,18 @@
 from sqlalchemy.ext.declarative import declarative_base
-from sqlalchemy import Column, Integer, String, Text, DECIMAL, DateTime, ForeignKey
+from sqlalchemy import (
+    Column, Integer, String, Text, DECIMAL, DateTime, ForeignKey, Enum, Date
+)
 from sqlalchemy.orm import relationship
 from datetime import datetime
+import enum
 
 Base = declarative_base()
+
+class PeriodTypeEnum(enum.Enum):
+    daily = 'daily'
+    weekly = 'weekly'
+    monthly = 'monthly'
+
 
 class Recipe(Base):
     __tablename__ = 'recipes'
@@ -21,67 +30,100 @@ class Recipe(Base):
     created_at = Column(DateTime, default=datetime.now)
     updated_at = Column(DateTime, default=datetime.now, onupdate=datetime.now)
 
-    # ----------- 추가 필드 START -----------
-    category      = Column("category", String(50))
-    ingredients   = Column("ingredients", Text)
-    INFO_ENG      = Column("INFO_ENG", String(20))
-    INFO_CAR      = Column("INFO_CAR", String(20))
-    INFO_PRO      = Column("INFO_PRO", String(20))
-    INFO_FAT      = Column("INFO_FAT", String(20))
-    INFO_NA       = Column("INFO_NA", String(20))
-    RCP_NA_TIP    = Column("RCP_NA_TIP", Text)
-    # ----------- 추가 필드 END -----------
+    # 추가 필드
+    category     = Column(String(50))
+    ingredients  = Column(Text)
+    INFO_ENG     = Column(String(20))
+    INFO_CAR     = Column(String(20))
+    INFO_PRO     = Column(String(20))
+    INFO_FAT     = Column(String(20))
+    INFO_NA      = Column(String(20))
+    RCP_NA_TIP   = Column(Text)
 
-    MANUAL01     = Column("MANUAL01", Text)
-    MANUAL02     = Column("MANUAL02", Text)
-    MANUAL03     = Column("MANUAL03", Text)
-    MANUAL04     = Column("MANUAL04", Text)
-    MANUAL05     = Column("MANUAL05", Text)
-    MANUAL06     = Column("MANUAL06", Text)
-    MANUAL07     = Column("MANUAL07", Text)
-    MANUAL08     = Column("MANUAL08", Text)
-    MANUAL09     = Column("MANUAL09", Text)
-    MANUAL10     = Column("MANUAL10", Text)
-    MANUAL11     = Column("MANUAL11", Text)
-    MANUAL12     = Column("MANUAL12", Text)
-    MANUAL13     = Column("MANUAL13", Text)
-    MANUAL14     = Column("MANUAL14", Text)
-    MANUAL15     = Column("MANUAL15", Text)
-    MANUAL16     = Column("MANUAL16", Text)
-    MANUAL17     = Column("MANUAL17", Text)
-    MANUAL18     = Column("MANUAL18", Text)
-    MANUAL19     = Column("MANUAL19", Text)
-    MANUAL20     = Column("MANUAL20", Text)
-    MANUAL_IMG01 = Column("MANUAL_IMG01", String(255))
-    MANUAL_IMG02 = Column("MANUAL_IMG02", String(255))
-    MANUAL_IMG03 = Column("MANUAL_IMG03", String(255))
-    MANUAL_IMG04 = Column("MANUAL_IMG04", String(255))
-    MANUAL_IMG05 = Column("MANUAL_IMG05", String(255))
-    MANUAL_IMG06 = Column("MANUAL_IMG06", String(255))
-    MANUAL_IMG07 = Column("MANUAL_IMG07", String(255))
-    MANUAL_IMG08 = Column("MANUAL_IMG08", String(255))
-    MANUAL_IMG09 = Column("MANUAL_IMG09", String(255))
-    MANUAL_IMG10 = Column("MANUAL_IMG10", String(255))
-    MANUAL_IMG11 = Column("MANUAL_IMG11", String(255))
-    MANUAL_IMG12 = Column("MANUAL_IMG12", String(255))
-    MANUAL_IMG13 = Column("MANUAL_IMG13", String(255))
-    MANUAL_IMG14 = Column("MANUAL_IMG14", String(255))
-    MANUAL_IMG15 = Column("MANUAL_IMG15", String(255))
-    MANUAL_IMG16 = Column("MANUAL_IMG16", String(255))
-    MANUAL_IMG17 = Column("MANUAL_IMG17", String(255))
-    MANUAL_IMG18 = Column("MANUAL_IMG18", String(255))
-    MANUAL_IMG19 = Column("MANUAL_IMG19", String(255))
-    MANUAL_IMG20 = Column("MANUAL_IMG20", String(255))
+    MANUAL01     = Column(Text)
+    MANUAL02     = Column(Text)
+    MANUAL03     = Column(Text)
+    MANUAL04     = Column(Text)
+    MANUAL05     = Column(Text)
+    MANUAL06     = Column(Text)
+    MANUAL07     = Column(Text)
+    MANUAL08     = Column(Text)
+    MANUAL09     = Column(Text)
+    MANUAL10     = Column(Text)
+    MANUAL11     = Column(Text)
+    MANUAL12     = Column(Text)
+    MANUAL13     = Column(Text)
+    MANUAL14     = Column(Text)
+    MANUAL15     = Column(Text)
+    MANUAL16     = Column(Text)
+    MANUAL17     = Column(Text)
+    MANUAL18     = Column(Text)
+    MANUAL19     = Column(Text)
+    MANUAL20     = Column(Text)
 
+    MANUAL_IMG01 = Column(String(255))
+    MANUAL_IMG02 = Column(String(255))
+    MANUAL_IMG03 = Column(String(255))
+    MANUAL_IMG04 = Column(String(255))
+    MANUAL_IMG05 = Column(String(255))
+    MANUAL_IMG06 = Column(String(255))
+    MANUAL_IMG07 = Column(String(255))
+    MANUAL_IMG08 = Column(String(255))
+    MANUAL_IMG09 = Column(String(255))
+    MANUAL_IMG10 = Column(String(255))
+    MANUAL_IMG11 = Column(String(255))
+    MANUAL_IMG12 = Column(String(255))
+    MANUAL_IMG13 = Column(String(255))
+    MANUAL_IMG14 = Column(String(255))
+    MANUAL_IMG15 = Column(String(255))
+    MANUAL_IMG16 = Column(String(255))
+    MANUAL_IMG17 = Column(String(255))
+    MANUAL_IMG18 = Column(String(255))
+    MANUAL_IMG19 = Column(String(255))
+    MANUAL_IMG20 = Column(String(255))
+
+    # 관계(Relationship)
     ratings = relationship("Rating", back_populates="recipe")
+    rating_histories = relationship("RecipeRatingHistories", back_populates="recipe", cascade="all, delete-orphan")
+    view_count_histories = relationship("RecipeViewCountHistories", back_populates="recipe", cascade="all, delete-orphan")
+
 
 class Rating(Base):
     __tablename__ = 'ratings'
-    id        = Column(Integer, primary_key=True, autoincrement=True)
-    recipe_id = Column(Integer, ForeignKey('recipes.id'), nullable=False)
-    user_id   = Column(Integer, nullable=False)
-    rating    = Column(Integer, nullable=False)
-    created_at   = Column(DateTime, default=datetime.now)
-    updated_at   = Column(DateTime, default=datetime.now, onupdate=datetime.now)
-    recipe   = relationship("Recipe", back_populates="ratings")
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    recipe_id = Column(Integer, ForeignKey('recipes.id', ondelete='CASCADE'), nullable=False)
+    user_id = Column(Integer, nullable=False)
+    rating = Column(Integer, nullable=False)
+    created_at = Column(DateTime, default=datetime.now)
+    updated_at = Column(DateTime, default=datetime.now, onupdate=datetime.now)
 
+    recipe = relationship("Recipe", back_populates="ratings")
+
+
+class RecipeRatingHistories(Base):
+    __tablename__ = 'recipe_rating_histories'
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    recipe_id = Column(Integer, ForeignKey('recipes.id', ondelete='CASCADE'), nullable=False)
+    period_type = Column(Enum(PeriodTypeEnum), nullable=False)
+    period_start_date = Column(Date, nullable=False)
+    rating_sum = Column(Integer, default=0, nullable=False)
+    rating_count = Column(Integer, default=0, nullable=False)
+    avg_rating = Column(DECIMAL(3,2))  # 필요 시 앱에서 계산하거나 DB 계산 컬럼으로 구현 가능
+    created_at = Column(DateTime, default=datetime.now)
+    updated_at = Column(DateTime, default=datetime.now, onupdate=datetime.now)
+
+    recipe = relationship("Recipe", back_populates="rating_histories")
+
+
+class RecipeViewCountHistories(Base):
+    __tablename__ = 'recipe_view_count_histories'
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    recipe_id = Column(Integer, ForeignKey('recipes.id', ondelete='CASCADE'), nullable=False)
+    date = Column(Date, nullable=False)
+    view_count = Column(Integer, default=0, nullable=False)
+    created_at = Column(DateTime, default=datetime.now)
+    updated_at = Column(DateTime, default=datetime.now, onupdate=datetime.now)
+
+    recipe = relationship("Recipe", back_populates="view_count_histories")
