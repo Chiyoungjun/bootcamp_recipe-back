@@ -7,12 +7,10 @@ from models import (
 )
 from datetime import datetime, timedelta, date
 
-API_KEY = "62f25c3fe3fb40deb80c"  # 본인 키로 교체하세요
-
+API_KEY = "62f25c3fe3fb40deb80c"  # 본인 키로 교체
 
 def categorize_recipe(name: str) -> str:
     name = (name or "").lower()
-
     if any(x in name for x in ['한식', '김치', '고추장']):
         return "한식"
     elif any(x in name for x in ['샐러드', '채소', '야채']):
@@ -42,14 +40,10 @@ def categorize_recipe(name: str) -> str:
     else:
         return "기타"
 
-
-
-
 def parse_ingredients(parts_dtl: str) -> list:
     if not parts_dtl:
         return []
     return [x.strip() for x in parts_dtl.split(",") if x.strip()]
-
 
 def fetch_and_save_all_recipes(db: Session, total=40000, batch_size=500):
     for start in range(1, total + 1, batch_size):
@@ -73,7 +67,6 @@ def fetch_and_save_all_recipes(db: Session, total=40000, batch_size=500):
                         manual_fields[mkey] = row.get(mkey)
                         manual_fields[ikey] = row.get(ikey)
 
-                    # 영양 정보 등
                     info_eng = row.get("INFO_ENG")
                     info_car = row.get("INFO_CAR")
                     info_pro = row.get("INFO_PRO")
@@ -83,10 +76,9 @@ def fetch_and_save_all_recipes(db: Session, total=40000, batch_size=500):
                     category = categorize_recipe(row.get("RCP_NM", ""))
                     ingredients = parse_ingredients(row.get("RCP_PARTS_DTLS", ""))
 
-                    # 이미 있는 row → update, 새로운 row → insert
+                    # 이미 있는 row → update, 신규 row → insert
                     recipe = db.query(Recipe).filter_by(id=rid).first()
                     if recipe:
-                        # update 모든 신규 컬럼 포함!
                         recipe.name = row.get("RCP_NM")
                         recipe.description = row.get("RCP_PARTS_DTLS", "")
                         recipe.image_url = row.get("ATT_FILE_NO_MAIN")
@@ -124,7 +116,6 @@ def fetch_and_save_all_recipes(db: Session, total=40000, batch_size=500):
         except Exception as e:
             print(f"  ⮕ 예외 발생: {e}")
 
-
 def fetch_external_recipe_by_name(food_name: str):
     encoded = urllib.parse.quote(food_name)
     url = (
@@ -144,7 +135,6 @@ def fetch_external_recipe_by_name(food_name: str):
         print(f"API 호출 오류: {e}")
     return []
 
-
 def save_recipe_to_db_from_api(api_row, db: Session):
     rid = int(api_row["RCP_SEQ"])
     recipe = db.query(Recipe).filter_by(id=rid).first()
@@ -152,7 +142,6 @@ def save_recipe_to_db_from_api(api_row, db: Session):
         recipe.name = api_row.get("RCP_NM")
         recipe.image_url = api_row.get("ATT_FILE_NO_MAIN")
         recipe.description = api_row.get("RCP_PARTS_DTLS", "")
-        # 기타 신규필드 UPDATE 가능
         db.commit()
         db.refresh(recipe)
         return recipe
@@ -167,7 +156,6 @@ def save_recipe_to_db_from_api(api_row, db: Session):
     db.refresh(recipe)
     return recipe
 
-
 def get_recipe(q: str, db: Session):
     recipes = db.query(Recipe).filter(Recipe.name.contains(q)).all()
     if recipes:
@@ -178,14 +166,11 @@ def get_recipe(q: str, db: Session):
         saved.append(save_recipe_to_db_from_api(row, db))
     return saved
 
-
 def get_recipe_detail(recipe_id: int, db: Session):
     return db.query(Recipe).filter_by(id=recipe_id).first()
 
-
 def get_recipe_list(db: Session):
     return db.query(Recipe).all()
-
 
 def increase_recipe_view_count(recipe_id: int, db: Session):
     recipe = db.query(Recipe).filter_by(id=recipe_id).first()
@@ -208,23 +193,21 @@ def increase_recipe_view_count(recipe_id: int, db: Session):
                 updated_at=datetime.now()
             )
             db.add(view_hist)
-
         db.commit()
         db.refresh(recipe)
     return recipe
 
-
-def get_period_start_dates(date: datetime):
-    daily = date.date()
-    weekly = (date - timedelta(days=date.weekday())).date()  # 이번 주 월요일 기준
-    monthly = date.replace(day=1).date()
+def get_period_start_dates(nowdt: datetime):
+    daily = nowdt.date()
+    weekly = (nowdt - timedelta(days=nowdt.weekday())).date()  # 이번 주 월요일 기준
+    monthly = nowdt.replace(day=1).date()
     return daily, weekly, monthly
 
-
-def add_or_update_rating(recipe_id: int, user_id: int, score: int, db: Session):
+def add_or_update_rating(recipe_id: int, user_id: str, score: int, db: Session):
     """
-    별점 수정 불가 정책 적용 및
-    기간별 별점 집계(recipe_rating_histories) 자동 업데이트 함수
+    user_id 타입이 str(VARCHAR)이므로, 인자를 int → str로 수정함.
+    별점 수정 불가 정책 및
+    기간별 별점 집계(recipe_rating_histories) 자동 업데이트까지 지원
     """
     # 별점 수정 불가: 이미 등록된 별점이 있으면 예외 발생
     rating = db.query(Rating).filter_by(recipe_id=recipe_id, user_id=user_id).first()
@@ -232,13 +215,14 @@ def add_or_update_rating(recipe_id: int, user_id: int, score: int, db: Session):
         raise ValueError("이미 별점을 등록하셨습니다.")
 
     now = datetime.now()
-    new_rating = Rating(recipe_id=recipe_id, user_id=user_id, rating=score, created_at=now)
+    new_rating = Rating(recipe_id=recipe_id, user_id=user_id, rating=score, created_at=now, updated_at=now)
     db.add(new_rating)
     db.flush()
 
     daily, weekly, monthly = get_period_start_dates(now)
-
-    for period_type, period_start_date in [('daily', daily), ('weekly', weekly), ('monthly', monthly)]:
+    for period_type, period_start_date in [
+        ('daily', daily), ('weekly', weekly), ('monthly', monthly)
+    ]:
         hist = db.query(RecipeRatingHistories).filter_by(
             recipe_id=recipe_id,
             period_type=PeriodTypeEnum(period_type),

@@ -1,7 +1,6 @@
 from db import get_db_pool
 import aiomysql
 
-
 class UserService:
     # 전체 회원 조회 (상세정보 포함)
     async def get_users(self):
@@ -9,26 +8,27 @@ class UserService:
         async with pool.acquire() as conn:
             async with conn.cursor(aiomysql.DictCursor) as cur:
                 await cur.execute("""
-                    SELECT u.*, d.height, d.weight, d.preferred_food, d.preferred_tags
+                    SELECT u.user_id, u.ko_name, u.email, 
+                           d.height, d.weight, d.preferred_food, d.preferred_tags
                     FROM user u
-                    LEFT JOIN user_detail d ON u.id = d.user_id
+                    LEFT JOIN user_detail d ON u.user_id = d.user_id
                 """)
                 return await cur.fetchall()
 
     # 특정 회원 조회 (user_id 기준)
-    async def get_one_user(self, user_id):
+    async def get_one_user(self, user_id: str):
         pool = await get_db_pool()
         async with pool.acquire() as conn:
             async with conn.cursor(aiomysql.DictCursor) as cur:
                 await cur.execute("""
-                    SELECT u.*, d.height, d.weight, d.preferred_food, d.preferred_tags, d.birth_date
+                    SELECT u.user_id, u.ko_name, u.email, d.height, d.weight, d.preferred_food, d.preferred_tags, d.birth_date
                     FROM user u
-                    LEFT JOIN user_detail d ON u.id = d.user_id
+                    LEFT JOIN user_detail d ON u.user_id = d.user_id
                     WHERE u.user_id = %s
                 """, (user_id,))
                 return await cur.fetchone()
 
-    # 로그인 서비스
+    # 로그인 서비스 (user_id/PW 체크)
     async def sign_in(self, user_info):
         user_id = user_info.get("user_id")
         pw = user_info.get("pw")
@@ -39,10 +39,10 @@ class UserService:
                 user = await cur.fetchone()
                 if not user:
                     raise Exception("Invalid User ID")
+                # 실제 서비스에서는 PW 암호화 확인 필요
                 if user["pw"] != pw:
                     raise Exception("Wrong Password")
                 return {
-                    "id": user["id"],
                     "user_id": user["user_id"],
                     "ko_name": user["ko_name"],
                     "email": user["email"]
@@ -69,18 +69,18 @@ class UserService:
                     raise Exception("User ID already exists")
 
                 await cur.execute("""
-                    INSERT INTO user(user_id, pw, ko_name, email)
+                    INSERT INTO user (user_id, pw, ko_name, email)
                     VALUES (%s, %s, %s, %s)
                 """, (user_id, pw, ko_name, email))
                 await conn.commit()
 
-                user_pk = cur.lastrowid
-
-                if height or weight or birth_date or preferred_food or preferred_tags:
+                # user_id가 PK이므로 lastrowid 불필요
+                # 서브 프로필도 user_id로 연결
+                if any([height, weight, birth_date, preferred_food, preferred_tags]):
                     await cur.execute("""
                         INSERT INTO user_detail(user_id, height, weight, birth_date, preferred_food, preferred_tags)
                         VALUES (%s, %s, %s, %s, %s, %s)
-                    """, (user_pk, height, weight, birth_date, preferred_food, preferred_tags))
+                    """, (user_id, height, weight, birth_date, preferred_food, preferred_tags))
                     await conn.commit()
 
                 return {
@@ -97,7 +97,7 @@ class UserService:
                 }
 
     # 회원정보 수정 서비스 (PATCH)
-    async def update_user(self, user_id, update_info):
+    async def update_user(self, user_id: str, update_info):
         pool = await get_db_pool()
         async with pool.acquire() as conn:
             async with conn.cursor(aiomysql.DictCursor) as cur:
@@ -116,7 +116,7 @@ class UserService:
                 await cur.execute("""
                     UPDATE user_detail 
                     SET height=%s, weight=%s, birth_date=%s, preferred_food=%s, preferred_tags=%s
-                    WHERE user_id=(SELECT id FROM user WHERE user_id=%s)
+                    WHERE user_id=%s
                 """, (
                     update_info.get("height"),
                     update_info.get("weight"),
