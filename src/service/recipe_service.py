@@ -3,9 +3,11 @@ import urllib.parse
 from sqlalchemy.orm import Session
 from models import (
     Recipe, Rating, RecipeRatingHistories, RecipeViewCountHistories,
-    PeriodTypeEnum
+    PeriodTypeEnum, UserSearchHistory, UserFavorites  # ← UserFavorites 추가!
 )
 from datetime import datetime, timedelta, date
+from sqlalchemy.exc import IntegrityError
+
 
 API_KEY = "62f25c3fe3fb40deb80c"  # 본인 키로 교체
 
@@ -255,3 +257,51 @@ def add_or_update_rating(recipe_id: int, user_id: str, score: int, db: Session):
     db.commit()
     db.refresh(recipe)
     return recipe
+
+def save_search_history(user_id: str, recipe_id: int, search_word: str, db: Session):
+    history = UserSearchHistory(
+        user_id=user_id,
+        recipe_id=recipe_id,
+        search_word=search_word,
+        search_time=datetime.now()
+    )
+    db.add(history)
+    db.commit()
+    db.refresh(history)
+    return history
+
+## ------------------즐겨찾기(찜) 기능 코드-------------------
+def add_to_favorites(user_id: str, recipe_id: int, db: Session):
+    """
+    사용자(user_id)가 레시피(recipe_id)를 즐겨찾기(찜) 추가
+    중복 찜 방지(IntegrityError로 체크)
+    """
+    fav = UserFavorites(user_id=user_id, recipe_id=recipe_id)
+    db.add(fav)
+    try:
+        db.commit()
+        db.refresh(fav)
+        return fav
+    except IntegrityError:
+        db.rollback()
+        raise ValueError("이미 찜한 레시피입니다.")
+
+def remove_from_favorites(user_id: str, recipe_id: int, db: Session):
+    """
+    사용자(user_id)의 즐겨찾기에서 레시피(recipe_id) 해제
+    """
+    fav = db.query(UserFavorites).filter_by(user_id=user_id, recipe_id=recipe_id).first()
+    if fav:
+        db.delete(fav)
+        db.commit()
+        return True
+    else:
+        raise ValueError("찜 목록에 없습니다.")
+
+def get_user_favorites(user_id: str, db: Session):
+    """
+    user_id가 찜한 레시피 목록 반환 (Recipe 객체 리스트)
+    """
+    favs = db.query(UserFavorites).filter_by(user_id=user_id).all()
+    recipes = [db.query(Recipe).filter_by(id=fav.recipe_id).first() for fav in favs]
+    return recipes
