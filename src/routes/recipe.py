@@ -85,7 +85,7 @@ def unfavorite_recipe(request: FavoriteRequest, db: Session = Depends(get_db)):
     except ValueError as e:
         raise HTTPException(404, detail=str(e))
 
-# ★★★ 사용자의 즐겨찾기(찜) 레시피 목록 조회 API
+# ★★★ 사용자의 즐겨찾기(찜) 레시피 목록 조회 APIw
 @router.get("/favorites/{user_id}")
 def get_favorites(user_id: str, db: Session = Depends(get_db)):
     recipes = get_user_favorites(user_id, db)
@@ -114,10 +114,14 @@ def search_recipes(q: str = Query(..., min_length=1), db: Session = Depends(get_
 @router.get("/recipedetail")
 def recipe_detail(
     id: int = Query(...),
-    user_id: str = Query(None),     # int → strF
+    user_id: str = Query(None),
+    increment_view: bool = Query(True),  # 기본 True
     db: Session = Depends(get_db),
 ):
-    recipe = increase_recipe_view_count(id, db)
+    if increment_view:
+        recipe = increase_recipe_view_count(id, db)
+    else:
+        recipe = db.query(Recipe).filter_by(id=id).first()
     if not recipe:
         raise HTTPException(404, "레시피가 없습니다.")
 
@@ -144,10 +148,10 @@ def recipe_detail(
         "rating_count": recipe.rating_count or 0,
         "view_count": recipe.view_count or 0,
         "user_rating": user_rating,
-        # ⬇⬇⬇ 조리 방법(매뉴얼)과 이미지 한 번에 모두 추가
         **{f"MANUAL{str(i).zfill(2)}": getattr(recipe, f"MANUAL{str(i).zfill(2)}") for i in range(1, 21)},
         **{f"MANUAL_IMG{str(i).zfill(2)}": getattr(recipe, f"MANUAL_IMG{str(i).zfill(2)}") for i in range(1, 21)},
     }
+
 
 
 # 레시피 리스트 조회 API
