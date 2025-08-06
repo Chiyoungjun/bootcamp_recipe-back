@@ -1,11 +1,13 @@
 from fastapi import APIRouter, Depends, Query, HTTPException, UploadFile, File
 from sqlalchemy.orm import Session
+from sqlalchemy import or_, and_, distinct
 from pydantic import BaseModel
 from database import get_db
 from models import (
     Rating, Recipe, RecipeRatingHistories, PeriodTypeEnum,
-    UserSearchHistory, UserBmiRecommendation, UserDetail, UserFavorites # ← UserFavorites 추가!
+    UserSearchHistory, UserBmiRecommendation, UserDetail, # ← UserFavorites 추가!
 )
+
 from service.recipe_service import (
     get_recipe, get_recipe_detail, get_recipe_list,
     increase_recipe_view_count, add_or_update_rating,
@@ -112,7 +114,7 @@ def search_recipes(q: str = Query(..., min_length=1), db: Session = Depends(get_
 @router.get("/recipedetail")
 def recipe_detail(
     id: int = Query(...),
-    user_id: str = Query(None),     # int → str
+    user_id: str = Query(None),     # int → strF
     db: Session = Depends(get_db),
 ):
     recipe = increase_recipe_view_count(id, db)
@@ -354,6 +356,7 @@ def get_user_preference_recommendations(
     user_id: str = Query(..., description="사용자 ID"),
     db: Session = Depends(get_db),
 ):
+    # 1. 사용자의 최근 검색어 5개 가져오기
     recent_searches = (
         db.query(UserSearchHistory.search_word)
         .filter(UserSearchHistory.user_id == user_id)
@@ -363,16 +366,28 @@ def get_user_preference_recommendations(
     )
     keywords = [kw for (kw,) in recent_searches]
 
+    # 검색어 없으면 빈 리스트 즉시 반환
     if not keywords:
         return {"recipes": []}
 
-    from sqlalchemy import or_
+    # 2. 검색어별 해당 레시피들의 카테고리 모두 추출
+    categories_query = (
+        db.query(distinct(Recipe.category))
+        .filter(
+            or_(*[Recipe.name.ilike(f"%{kw}%") for kw in keywords])
+        )
+    )
+    categories = [c for (c,) in categories_query.all()]
 
-    like_conditions = [Recipe.name.ilike(f"%{kw}%") for kw in keywords]
-    query = db.query(Recipe).filter(or_(*like_conditions))
+    if not categories:
+        # 검색어에 해당하는 레시피가 없으면 빈 리스트 반환 혹은 기본 추천
+        return {"recipes": []}
 
+    # 3. 추출한 복수 카테고리에 해당하는 레시피를 모두 조회, 인기순 정렬
+    query = db.query(Recipe).filter(Recipe.category.in_(categories))
     recipes = query.order_by(Recipe.view_count.desc()).limit(10).all()
 
+    # 4. 추천할 레시피가 부족하면 인기 레시피로 보충
     if len(recipes) < 10:
         needed = 10 - len(recipes)
         popular_recipes = (
@@ -384,6 +399,7 @@ def get_user_preference_recommendations(
         )
         recipes.extend(popular_recipes)
 
+    # 5. 결과 가공
     result = [
         {
             "id": r.id,
