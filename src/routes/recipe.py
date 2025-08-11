@@ -5,7 +5,7 @@ from pydantic import BaseModel
 from database import get_db
 from models import (
     Rating, Recipe, RecipeRatingHistories, PeriodTypeEnum,
-    UserSearchHistory, UserBmiRecommendation, UserDetail, # ← UserFavorites 추가!
+    UserSearchHistory, UserBmiRecommendation, UserDetail, 
 )
 
 from service.recipe_service import (
@@ -24,7 +24,7 @@ from datetime import datetime
 
 router = APIRouter()
 
-# BMI 분류 함수
+# BMI 분류 함수  머신러닝으로 대체
 def classify_bmi(bmi: float) -> str:
     if bmi < 18.5:
         return "저체중"
