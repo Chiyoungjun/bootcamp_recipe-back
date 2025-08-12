@@ -1,8 +1,9 @@
 # main.py
 from fastapi import FastAPI, Depends
 from fastapi.middleware.cors import CORSMiddleware
-from routes.user import router as user_router  # 있다면
-from routes.recipe import router as recipe_router
+from recipe.router import router as recipe_router
+from user.router import router as user_router
+
 from ai.ai_model import model  # 위에서 만든 모듈에서 모델 임포트
 
 
