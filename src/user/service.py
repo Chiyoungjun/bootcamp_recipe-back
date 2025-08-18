@@ -8,7 +8,7 @@ class UserService:
             async with conn.cursor(aiomysql.DictCursor) as cur:
                 await cur.execute("""
                     SELECT u.user_id, u.ko_name, u.email, 
-                           d.height, d.weight, d.preferred_food, d.preferred_tags
+                           d.height, d.weight, d.gender, d.preferred_food, d.preferred_tags
                     FROM user u
                     LEFT JOIN user_detail d ON u.user_id = d.user_id
                 """)
@@ -20,7 +20,7 @@ class UserService:
             async with conn.cursor(aiomysql.DictCursor) as cur:
                 await cur.execute("""
                     SELECT u.user_id, u.ko_name, u.email, d.height, d.weight, 
-                           d.preferred_food, d.preferred_tags, d.birth_date
+                           d.gender, d.preferred_food, d.preferred_tags, d.birth_date
                     FROM user u
                     LEFT JOIN user_detail d ON u.user_id = d.user_id
                     WHERE u.user_id = %s
@@ -53,6 +53,7 @@ class UserService:
         birth_date = user_info.get("birth_date")
         height = user_info.get("height")
         weight = user_info.get("weight")
+        gender = user_info.get("gender")  # ⬅️ gender 추가!
         preferred_food = user_info.get("preferred_food")
         preferred_tags = user_info.get("preferred_tags")
 
@@ -70,11 +71,12 @@ class UserService:
                 """, (user_id, pw, ko_name, email))
                 await conn.commit()
 
-                if any([height, weight, birth_date, preferred_food, preferred_tags]):
+                if any([height, weight, birth_date, gender, preferred_food, preferred_tags]):
                     await cur.execute("""
-                        INSERT INTO user_detail(user_id, height, weight, birth_date, preferred_food, preferred_tags)
-                        VALUES (%s, %s, %s, %s, %s, %s)
-                    """, (user_id, height, weight, birth_date, preferred_food, preferred_tags))
+                        INSERT INTO user_detail
+                        (user_id, height, weight, birth_date, gender, preferred_food, preferred_tags)
+                        VALUES (%s, %s, %s, %s, %s, %s, %s)
+                    """, (user_id, height, weight, birth_date, gender, preferred_food, preferred_tags))
                     await conn.commit()
 
                 return {
@@ -85,6 +87,7 @@ class UserService:
                         "height": height,
                         "weight": weight,
                         "birth_date": birth_date,
+                        "gender": gender,
                         "preferred_food": preferred_food,
                         "preferred_tags": preferred_tags,
                     }
@@ -106,12 +109,13 @@ class UserService:
 
                 await cur.execute("""
                     UPDATE user_detail 
-                    SET height=%s, weight=%s, birth_date=%s, preferred_food=%s, preferred_tags=%s
+                    SET height=%s, weight=%s, birth_date=%s, gender=%s, preferred_food=%s, preferred_tags=%s
                     WHERE user_id=%s
                 """, (
                     update_info.get("height"),
                     update_info.get("weight"),
                     update_info.get("birth_date"),
+                    update_info.get("gender"),
                     update_info.get("preferred_food"),
                     update_info.get("preferred_tags"),
                     user_id,
@@ -119,3 +123,4 @@ class UserService:
 
                 await conn.commit()
                 return {"msg": "회원 정보 수정 완료"}
+

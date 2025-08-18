@@ -25,6 +25,7 @@ class UserDetail(Base):
     user_id = Column(String(50), ForeignKey('user.user_id', ondelete='CASCADE'), primary_key=True)
     height = Column(Float, nullable=True)
     weight = Column(Float, nullable=True)
+    gender = Column(String(20), nullable=True)      # ← 여기!
     preferred_food = Column(String(100), nullable=True)
     preferred_tags = Column(String(200), nullable=True)
     birth_date = Column(String(20), nullable=True)

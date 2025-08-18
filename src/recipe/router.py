@@ -12,6 +12,9 @@ from user.models import UserSearchHistory, UserBmiRecommendation, UserDetail, Us
 # service 모듈 전체 임포트
 from . import service
 
+# 번역기능 추가
+from recipe.service import translate_texts  # 번역 함수 import
+
 # schemas
 from .schemas import RatingRequest, FavoriteRequest, SearchHistoryRequest, BmiRecommendationRequest
 
@@ -24,20 +27,18 @@ from typing import List
 
 router = APIRouter()
 
-
 # ---------------------------------
 # Helper
 # ---------------------------------
-def classify_bmi(bmi: float) -> str:
-    if bmi < 18.5:
-        return "저체중"
-    elif bmi < 23:
-        return "정상"
-    elif bmi < 25:
-        return "과체중"
-    else:
-        return "비만"
-
+# def classify_bmi(bmi: float) -> str:
+#     if bmi < 18.5:
+#         return "저체중"
+#     elif bmi < 23:
+#         return "정상"
+#     elif bmi < 25:
+#         return "과체중"
+#     else:
+#         return "비만"
 
 # ---------------------------------
 # 즐겨찾기
@@ -50,7 +51,6 @@ def favorite_recipe(request: FavoriteRequest, db: Session = Depends(get_db)):
     except ValueError as e:
         raise HTTPException(400, detail=str(e))
 
-
 @router.delete("/favorites")
 def unfavorite_recipe(request: FavoriteRequest, db: Session = Depends(get_db)):
     try:
@@ -58,7 +58,6 @@ def unfavorite_recipe(request: FavoriteRequest, db: Session = Depends(get_db)):
         return {"message": "레시피 즐겨찾기(찜) 해제 성공"}
     except ValueError as e:
         raise HTTPException(404, detail=str(e))
-
 
 @router.get("/favorites/{user_id}")
 def get_favorites(user_id: str, db: Session = Depends(get_db)):
@@ -76,7 +75,6 @@ def get_favorites(user_id: str, db: Session = Depends(get_db)):
         for r in recipes if r
     ]}
 
-
 # ---------------------------------
 # 외부 레시피 검색
 # ---------------------------------
@@ -87,12 +85,12 @@ def search_recipes(q: str = Query(..., min_length=1), db: Session = Depends(get_
         raise HTTPException(404, "레시피가 없습니다.")
     return recipes
 
-
 # ---------------------------------
-# 레시피 상세보기
+# 레시피 상세보기 (번역기능 추가)
 # ---------------------------------
+# 백엔드: recipe/router.py (recipedetail API 일부 수정 예시)
 @router.get("/recipedetail")
-def recipe_detail(id: int = Query(...), user_id: str = Query(None),
+def recipe_detail(id: int = Query(...), user_id: str = Query(None), lang: str = Query("ko"),
                   increment_view: bool = Query(True), db: Session = Depends(get_db)):
     if increment_view:
         recipe = service.increase_recipe_view_count(id, db)
@@ -101,6 +99,55 @@ def recipe_detail(id: int = Query(...), user_id: str = Query(None),
     if not recipe:
         raise HTTPException(404, "레시피가 없습니다.")
 
+    if lang.lower() == "en":
+        try:
+            # 기존 번역 처리
+            name_and_desc = service.translate_texts([
+                recipe.name or "",
+                recipe.description or "",
+                recipe.RCP_NA_TIP or ""
+            ])
+            name, description, tip = name_and_desc[0], name_and_desc[1], name_and_desc[2]
+
+            ingredients = recipe.ingredients.split(",") if recipe.ingredients else []
+            ingredients_en = service.translate_texts(ingredients)
+
+            steps = [
+                getattr(recipe, f"MANUAL{str(i).zfill(2)}")
+                for i in range(1, 21) if getattr(recipe, f"MANUAL{str(i).zfill(2)}")
+            ]
+            steps_en = service.translate_texts(steps)
+
+            # 영어 만드는 법 단계+이미지 리스트 생성 (manual_en 필드 추가)
+            manual_en = [{"step": s, "img": getattr(recipe, f"MANUAL_IMG{str(i+1).zfill(2)}")} for i, s in enumerate(steps_en)]
+
+        except Exception as e:
+            raise HTTPException(500, f"번역 실패: {e}")
+
+        return {
+            "id": recipe.id,
+            "lang": "en",
+            "name": name,
+            "description": description,
+            "image_url": recipe.image_url,
+            "category": recipe.category,
+            "ingredients": ingredients_en,
+            "steps": steps_en,
+            "manual_en": manual_en,              # 영어 만드는 법 배열 포함
+            "INFO_ENG": recipe.INFO_ENG,
+            "INFO_CAR": recipe.INFO_CAR,
+            "INFO_PRO": recipe.INFO_PRO,
+            "INFO_FAT": recipe.INFO_FAT,
+            "INFO_NA": recipe.INFO_NA,
+            "RCP_NA_TIP": tip,
+            "RCP_NA_TIP_EN": tip,                # 영어 팁도 분리 가능
+            "avg_rating": float(recipe.avg_rating or 0),
+            "rating_count": recipe.rating_count or 0,
+            "view_count": recipe.view_count or 0,
+            "user_rating": 0,
+        }
+
+    # 기존 한국어 응답(변동 없음)
     user_rating = 0
     if user_id:
         rating_entry = db.query(Rating).filter_by(recipe_id=id, user_id=user_id).first()
@@ -109,6 +156,7 @@ def recipe_detail(id: int = Query(...), user_id: str = Query(None),
 
     data = {
         "id": recipe.id,
+        "lang": "ko",
         "name": recipe.name,
         "description": recipe.description,
         "image_url": recipe.image_url,
@@ -138,7 +186,6 @@ def recipe_detail(id: int = Query(...), user_id: str = Query(None),
 def recipe_list(db: Session = Depends(get_db)):
     return service.get_recipe_list(db)
 
-
 # ---------------------------------
 # 조회수 증가
 # ---------------------------------
@@ -148,7 +195,6 @@ def view_recipe(recipe_id: int, db: Session = Depends(get_db)):
     if not recipe:
         raise HTTPException(404, "레시피가 없습니다.")
     return {"view_count": recipe.view_count}
-
 
 # ---------------------------------
 # 별점 등록
@@ -162,7 +208,6 @@ def rate_recipe(recipe_id: int, rating: RatingRequest, db: Session = Depends(get
     except ValueError as e:
         raise HTTPException(400, detail=str(e))
     return {"avg_rating": float(recipe.avg_rating), "rating_count": recipe.rating_count}
-
 
 # ---------------------------------
 # 랭킹
@@ -208,79 +253,80 @@ def get_rankings(period: str = Query(..., regex="^(daily|weekly|monthly)$"), db:
     ]}
 
 
+
 # ---------------------------------
 # BMI 기반 추천
 # ---------------------------------
-@router.get("/recommendations/bmi")
-def get_bmi_recommendations(user_id: str = Query(...), db: Session = Depends(get_db)):
-    user_profile = db.query(UserDetail).filter_by(user_id=user_id).first()
-    if not user_profile or not user_profile.height or not user_profile.weight:
-        raise HTTPException(400, "사용자 신체 정보 필요")
+# @router.get("/recommendations/bmi")
+# def get_bmi_recommendations(user_id: str = Query(...), db: Session = Depends(get_db)):
+#     user_profile = db.query(UserDetail).filter_by(user_id=user_id).first()
+#     if not user_profile or not user_profile.height or not user_profile.weight:
+#         raise HTTPException(400, "사용자 신체 정보 필요")
 
-    bmi = float(user_profile.weight) / ((float(user_profile.height) / 100) ** 2)
-    bmi_class = classify_bmi(bmi)
+#     bmi = float(user_profile.weight) / ((float(user_profile.height) / 100) ** 2)
+#     bmi_class = classify_bmi(bmi)
 
-    if bmi_class == "저체중":
-        query = db.query(Recipe).filter(Recipe.category.in_(["밥", "구이, 찜"])).order_by(Recipe.INFO_ENG.desc())
-    elif bmi_class == "정상":
-        query = db.query(Recipe).order_by(Recipe.view_count.desc())
-    elif bmi_class == "과체중":
-        query = db.query(Recipe).filter(Recipe.category.in_(["샐러드", "국, 찌개", "반찬"])).order_by(Recipe.INFO_ENG.asc())
-    else:
-        query = db.query(Recipe).filter(Recipe.category.in_(["샐러드", "반찬"])).order_by(Recipe.INFO_ENG.asc())
+#     if bmi_class == "저체중":
+#         query = db.query(Recipe).filter(Recipe.category.in_(["밥", "구이, 찜"])).order_by(Recipe.INFO_ENG.desc())
+#     elif bmi_class == "정상":
+#         query = db.query(Recipe).order_by(Recipe.view_count.desc())
+#     elif bmi_class == "과체중":
+#         query = db.query(Recipe).filter(Recipe.category.in_(["샐러드", "국, 찌개", "반찬"])).order_by(Recipe.INFO_ENG.asc())
+#     else:
+#         query = db.query(Recipe).filter(Recipe.category.in_(["샐러드", "반찬"])).order_by(Recipe.INFO_ENG.asc())
 
-    recipes = query.limit(10).all()
-    return {
-        "bmi": round(bmi, 2),
-        "bmi_category": bmi_class,
-        "recipes": [{
-            "id": r.id,
-            "name": r.name,
-            "image_url": r.image_url,
-            "category": r.category,
-            "avg_rating": float(r.avg_rating or 0),
-            "rating_count": r.rating_count or 0,
-            "view_count": r.view_count or 0,
-        } for r in recipes]
-    }
+#     recipes = query.limit(10).all()
+#     return {
+#         "bmi": round(bmi, 2),
+#         "bmi_category": bmi_class,
+#         "recipes": [{
+#             "id": r.id,
+#             "name": r.name,
+#             "image_url": r.image_url,
+#             "category": r.category,
+#             "avg_rating": float(r.avg_rating or 0),
+#             "rating_count": r.rating_count or 0,
+#             "view_count": r.view_count or 0,
+#         } for r in recipes]
+#     }
 
 
 # ---------------------------------
 # 이미지 업로드 & 분석
 # ---------------------------------
-@router.post("/recipes/upload")
-async def upload_recipe_image(image: UploadFile = File(...), db: Session = Depends(get_db)):
-    upload_dir = "temp_uploads"
-    os.makedirs(upload_dir, exist_ok=True)
-    file_path = os.path.join(upload_dir, image.filename)
-    try:
-        with open(file_path, "wb") as buffer:
-            shutil.copyfileobj(image.file, buffer)
-    except Exception as e:
-        raise HTTPException(500, f"파일 저장 실패: {str(e)}")
+# @router.post("/recipes/upload")
+# async def upload_recipe_image(image: UploadFile = File(...), db: Session = Depends(get_db)):
+#     upload_dir = "temp_uploads"
+#     os.makedirs(upload_dir, exist_ok=True)
+#     file_path = os.path.join(upload_dir, image.filename)
+#     try:
+#         with open(file_path, "wb") as buffer:
+#             shutil.copyfileobj(image.file, buffer)
+#     except Exception as e:
+#         raise HTTPException(500, f"파일 저장 실패: {str(e)}")
 
-    try:
-        results = model(file_path)
-    except Exception as e:
-        os.remove(file_path)
-        raise HTTPException(500, f"YOLO 추론 실패: {str(e)}")
+#     try:
+#         results = model(file_path)
+#     except Exception as e:
+#         os.remove(file_path)
+#         raise HTTPException(500, f"YOLO 추론 실패: {str(e)}")
 
-    food_names = []
-    for r in results:
-        if hasattr(r, "boxes"):
-            for box in r.boxes:
-                label = model.names[int(box.cls[0])]
-                food_names.append(label)
-    os.remove(file_path)
+#     food_names = []
+#     for r in results:
+#         if hasattr(r, "boxes"):
+#             for box in r.boxes:
+#                 label = model.names[int(box.cls[0])]
+#                 food_names.append(label)
+#     os.remove(file_path)
 
-    if not food_names:
-        raise HTTPException(404, "이미지에서 음식을 인식하지 못했습니다.")
+#     if not food_names:
+#         raise HTTPException(404, "이미지에서 음식을 인식하지 못했습니다.")
 
-    search_name = Counter(food_names).most_common(1)[0][0].split("_", 1)[-1]
-    recipes = service.get_recipe(search_name, db)
-    if not recipes:
-        raise HTTPException(404, f"{search_name} 기반 검색 결과 없음")
-    return recipes
+#     search_name = Counter(food_names).most_common(1)[0][0].split("_", 1)[-1]
+#     recipes = service.get_recipe(search_name, db)
+#     if not recipes:
+#         raise HTTPException(404, f"{search_name} 기반 검색 결과 없음")
+#     return recipes
 
 
 # ---------------------------------

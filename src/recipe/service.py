@@ -4,6 +4,8 @@ from sqlalchemy.orm import Session
 from sqlalchemy.exc import IntegrityError
 from datetime import datetime, timedelta, date
 from collections import Counter
+from ai.ai_model import category_model, vectorizer, manual_map
+
 
 # recipe 폴더 안 models.py
 from .models import (
@@ -16,44 +18,44 @@ from user.models import (
     UserSearchHistory, UserFavorites
 )
 
+# 번역 기능 추가 import
+from googletrans import Translator
+from typing import List
+
+from ai.ai_model import category_model  # ML 모델 로드
+
+translator = Translator()
+
+def predict_recipe_category(name: str, description: str) -> str:
+    text = (name or "") + " " + (description or "")
+    X = vectorizer.transform([text])
+    cluster_num = int(category_model.predict(X)[0])
+
+    # 병합 로직
+    if cluster_num in [3, 11, 12,13]:
+        cluster_num = 2  # 병합된 '한식' 군집 번호
+
+    return manual_map.get(cluster_num, str(cluster_num))
+
+
 API_KEY = "62f25c3fe3fb40deb80c"
 
-def categorize_recipe(name: str) -> str:
-    name = (name or "").lower()
-    if any(x in name for x in ['한식', '김치', '고추장']):
-        return "한식"
-    elif any(x in name for x in ['샐러드', '채소', '야채']):
-        return "샐러드"
-    elif any(x in name for x in ['중식', '중국']):
-        return "중식"
-    elif any(x in name for x in ['일식', '초밥', '우동']):
-        return "일식"
-    elif any(x in name for x in ['양식', '파스타', '피자', '스테이크']):
-        return "양식"
-    elif any(x in name for x in ['밥', '볶음밥', '비빔밥']):
-        return "밥"
-    elif any(x in name for x in ['찌개', '국']):
-        return "국, 찌개"
-    elif any(x in name for x in ['면', '국수', '라면']):
-        return "면"
-    elif any(x in name for x in ['반찬', '젓갈', '무침']):
-        return "반찬"
-    elif any(x in name for x in ['구이', '찜']):
-        return "구이, 찜"
-    elif '볶음' in name:
-        return "볶음"
-    elif '탕' in name:
-        return "탕"
-    elif '조림' in name:
-        return "조림"
-    else:
-        return "기타"
-    
 def parse_ingredients(parts_dtl: str) -> list:
     if not parts_dtl:
         return []
     return [x.strip() for x in parts_dtl.split(",") if x.strip()]
 
+def translate_texts(texts: List[str], dest: str = "en") -> List[str]:
+    result = []
+    for t in texts:
+        s = t if t is not None else ""
+        try:
+            translated = translator.translate(s, dest=dest)
+            result.append(translated.text)
+        except Exception as e:
+            print(f"번역 중 오류 발생: {e}, 입력값: {s}")
+            result.append("")
+    return result
 
 def fetch_and_save_all_recipes(db: Session, total=40000, batch_size=500):
     for start in range(1, total + 1, batch_size):
@@ -83,15 +85,17 @@ def fetch_and_save_all_recipes(db: Session, total=40000, batch_size=500):
                     info_fat = row.get("INFO_FAT")
                     info_na = row.get("INFO_NA")
                     rcp_na_tip = row.get("RCP_NA_TIP")
-                    category = categorize_recipe(row.get("RCP_NM", ""))
                     ingredients = parse_ingredients(row.get("RCP_PARTS_DTLS", ""))
+
+                    # ML 모델로 카테고리 예측
+                    ml_category = predict_recipe_category(row.get("RCP_NM", ""), row.get("RCP_PARTS_DTLS", ""))
 
                     recipe = db.query(Recipe).filter_by(id=rid).first()
                     if recipe:
                         recipe.name = row.get("RCP_NM")
                         recipe.description = row.get("RCP_PARTS_DTLS", "")
                         recipe.image_url = row.get("ATT_FILE_NO_MAIN")
-                        recipe.category = category
+                        recipe.category = ml_category
                         recipe.ingredients = ",".join(ingredients) if isinstance(ingredients, list) else ingredients
                         recipe.INFO_ENG = info_eng
                         recipe.INFO_CAR = info_car
@@ -107,7 +111,7 @@ def fetch_and_save_all_recipes(db: Session, total=40000, batch_size=500):
                             name=row.get("RCP_NM"),
                             image_url=row.get("ATT_FILE_NO_MAIN"),
                             description=row.get("RCP_PARTS_DTLS", ""),
-                            category=category,
+                            category=ml_category,
                             ingredients=",".join(ingredients) if isinstance(ingredients, list) else ingredients,
                             INFO_ENG=info_eng,
                             INFO_CAR=info_car,
@@ -125,7 +129,6 @@ def fetch_and_save_all_recipes(db: Session, total=40000, batch_size=500):
         except Exception as e:
             print(f"  ⮕ 예외 발생: {e}")
 
-
 def fetch_external_recipe_by_name(food_name: str):
     encoded = urllib.parse.quote(food_name)
     url = (
@@ -137,14 +140,10 @@ def fetch_external_recipe_by_name(food_name: str):
         if res.status_code == 200:
             data = res.json()
             rows = data.get("COOKRCP01", {}).get("row", [])
-            for row in rows:
-                row["CATEGORY"] = categorize_recipe(row.get("RCP_NM", ""))
-                row["INGREDIENTS"] = parse_ingredients(row.get("RCP_PARTS_DTLS", ""))
             return rows
     except Exception as e:
         print(f"API 호출 오류: {e}")
     return []
-
 
 def save_recipe_to_db_from_api(api_row, db: Session):
     rid = int(api_row["RCP_SEQ"])
@@ -167,7 +166,6 @@ def save_recipe_to_db_from_api(api_row, db: Session):
     db.refresh(recipe)
     return recipe
 
-
 def get_recipe(q: str, db: Session):
     recipes = db.query(Recipe).filter(Recipe.name.contains(q)).all()
     if recipes:
@@ -178,23 +176,18 @@ def get_recipe(q: str, db: Session):
         saved.append(save_recipe_to_db_from_api(row, db))
     return saved
 
-
 def get_recipe_detail(recipe_id: int, db: Session):
     return db.query(Recipe).filter_by(id=recipe_id).first()
 
-
 def get_recipe_list(db: Session):
     return db.query(Recipe).all()
-
 
 def increase_recipe_view_count(recipe_id: int, db: Session):
     recipe = db.query(Recipe).filter_by(id=recipe_id).first()
     if recipe:
         recipe.view_count = (recipe.view_count or 0) + 1
-
         today = date.today()
         view_hist = db.query(RecipeViewCountHistories).filter_by(recipe_id=recipe_id, date=today).first()
-
         if view_hist:
             view_hist.view_count += 1
             view_hist.updated_at = datetime.now()
@@ -211,24 +204,20 @@ def increase_recipe_view_count(recipe_id: int, db: Session):
         db.refresh(recipe)
     return recipe
 
-
 def get_period_start_dates(nowdt: datetime):
     daily = nowdt.date()
     weekly = (nowdt - timedelta(days=nowdt.weekday())).date()
     monthly = nowdt.replace(day=1).date()
     return daily, weekly, monthly
 
-
 def add_or_update_rating(recipe_id: int, user_id: str, score: int, db: Session):
     rating = db.query(Rating).filter_by(recipe_id=recipe_id, user_id=user_id).first()
     if rating:
         raise ValueError("이미 별점을 등록하셨습니다.")
-
     now = datetime.now()
     new_rating = Rating(recipe_id=recipe_id, user_id=user_id, rating=score, created_at=now, updated_at=now)
     db.add(new_rating)
     db.flush()
-
     daily, weekly, monthly = get_period_start_dates(now)
     for period_type, period_start_date in [
         ('daily', daily), ('weekly', weekly), ('monthly', monthly)
@@ -253,18 +242,14 @@ def add_or_update_rating(recipe_id: int, user_id: str, score: int, db: Session):
                 updated_at=now
             )
             db.add(hist)
-
     ratings = db.query(Rating).filter_by(recipe_id=recipe_id).all()
     avg = sum(r.rating for r in ratings) / len(ratings) if ratings else 0
-
     recipe = db.query(Recipe).filter_by(id=recipe_id).first()
     recipe.avg_rating = avg
     recipe.rating_count = len(ratings)
-
     db.commit()
     db.refresh(recipe)
     return recipe
-
 
 def save_search_history(user_id: str, recipe_id: int, search_word: str, db: Session):
     history = UserSearchHistory(
@@ -278,8 +263,6 @@ def save_search_history(user_id: str, recipe_id: int, search_word: str, db: Sess
     db.refresh(history)
     return history
 
-
-# 즐겨찾기(찜) 기능 -----------------------------------
 def add_to_favorites(user_id: str, recipe_id: int, db: Session):
     fav = UserFavorites(user_id=user_id, recipe_id=recipe_id)
     db.add(fav)
@@ -291,7 +274,6 @@ def add_to_favorites(user_id: str, recipe_id: int, db: Session):
         db.rollback()
         raise ValueError("이미 찜한 레시피입니다.")
 
-
 def remove_from_favorites(user_id: str, recipe_id: int, db: Session):
     fav = db.query(UserFavorites).filter_by(user_id=user_id, recipe_id=recipe_id).first()
     if fav:
@@ -301,8 +283,7 @@ def remove_from_favorites(user_id: str, recipe_id: int, db: Session):
     else:
         raise ValueError("찜 목록에 없습니다.")
 
-
 def get_user_favorites(user_id: str, db: Session):
     favs = db.query(UserFavorites).filter_by(user_id=user_id).all()
     recipes = [db.query(Recipe).filter_by(id=fav.recipe_id).first() for fav in favs]
-    return recipes    
+    return recipes
