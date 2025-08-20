@@ -25,6 +25,16 @@ from collections import Counter
 from ai.ai_model import model
 from typing import List
 
+from chatbot.chatbot import ask_chatbot # 정용우 추가
+from pydantic import BaseModel # 정용우 추가 # 요청 바디(JSON)**를 자동으로 파이썬 객체로 변환 # 클라이언트가 "레시피 알려줘"> request.message 로 사용
+from fastapi.responses import StreamingResponse # 스트리밍 서비스 # 정용우 추가
+#from chatbot import model # 정용우 추가 이거 뭔가 안돼서 아래 3줄추가.
+import google.generativeai as genai # 정용우
+
+genai.configure(api_key="AIzaSyDnMIpa9qzRUdMvX5FvH4v13JOhWfjzkIs") # 정용우
+gemini_model = genai.GenerativeModel("gemini-1.5-flash") # 정용우
+
+
 router = APIRouter()
 
 # ---------------------------------
@@ -92,6 +102,7 @@ def search_recipes(q: str = Query(..., min_length=1), db: Session = Depends(get_
 @router.get("/recipedetail")
 def recipe_detail(id: int = Query(...), user_id: str = Query(None), lang: str = Query("ko"),
                   increment_view: bool = Query(True), db: Session = Depends(get_db)):
+    """상세레시피"""
     if increment_view:
         recipe = service.increase_recipe_view_count(id, db)
     else:
@@ -435,3 +446,34 @@ def get_recipes(category: str = Query(None), search: str = Query(None), page: in
         } for r in recipes],
         "total_count": total_count
     }
+
+class ChatRequest(BaseModel):
+    message: str
+
+# ✅ 완성형: ask_chatbot 사용
+@router.post("/chatbot")
+def chatbot_answer(request: ChatRequest):
+    try:
+        answer = ask_chatbot(request.message)
+        return {"answer": answer}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+# ✅ 스트리밍: text/plain 스트림
+@router.post("/chatbot/stream")
+def chatbot_stream(request: ChatRequest):
+    prompt = (
+        f"'{request.message}'에 대해 요리 전문가처럼 자세하고 친절하게 요리 레시피를 단계별로 설명해줘. "
+        f"칼로리,지방 같은 영양성분과 재료를 먼저 알려줘. "
+        f"그 다음에는 1단계,2단계...단계별로 요리 순서를 알려줘"
+    )
+    def token_stream():
+        try:
+            response = gemini_model.generate_content(prompt, stream=True)
+            for chunk in response:
+                if chunk.text:
+                    yield chunk.text
+        except Exception as e:
+            yield f"\n[ERROR] {str(e)}"
+
+    return StreamingResponse(token_stream(), media_type="text/plain; charset=utf-8")
