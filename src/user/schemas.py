@@ -3,12 +3,11 @@ from typing import Optional
 from datetime import datetime
 
 
-# 기존 User 스키마
 class UserBase(BaseModel):
     user_id: str
     ko_name: Optional[str] = None
     email: Optional[str] = None
-    gender: Optional[str] = None      # ⬅️ gender 필드 추가
+    gender: Optional[str] = None
 
 
 class UserCreate(UserBase):
@@ -18,7 +17,7 @@ class UserCreate(UserBase):
     weight: Optional[float] = None
     preferred_food: Optional[str] = None
     preferred_tags: Optional[str] = None
-    gender: Optional[str] = None      # ⬅️ User 생성 시에도 gender 추가
+    gender: Optional[str] = None
 
 
 class UserUpdate(BaseModel):
@@ -29,17 +28,14 @@ class UserUpdate(BaseModel):
     birth_date: Optional[str]
     preferred_food: Optional[str]
     preferred_tags: Optional[str]
-    gender: Optional[str] = None      # ⬅️ 수정 시에도 gender 반영
+    gender: Optional[str] = None
 
 
 class UserOut(UserBase):
-    gender: Optional[str] = None      # ⬅️ 응답에도 gender 포함
+    gender: Optional[str] = None
 
     class Config:
         from_attributes = True
-
-
-# 추가: 유저 작성 레시피 스키마
 
 
 class UserRecipeBase(BaseModel):
@@ -99,7 +95,6 @@ class UserRecipeCreate(UserRecipeBase):
     INFO_PRO: Optional[str] = None
     INFO_FAT: Optional[str] = None
     INFO_NA: Optional[str] = None
-
     RCP_NA_TIP: Optional[str] = None
 
 
@@ -158,7 +153,6 @@ class UserRecipeUpdate(BaseModel):
     INFO_PRO: Optional[str]
     INFO_FAT: Optional[str]
     INFO_NA: Optional[str]
-
     RCP_NA_TIP: Optional[str]
 
 

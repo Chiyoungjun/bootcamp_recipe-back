@@ -44,7 +44,7 @@ class UserService:
                 user = await cur.fetchone()
                 if not user:
                     raise Exception("Invalid User ID")
-                if user["pw"] != pw:  # TODO: 실제 서비스에서는 암호화 처리
+                if user["pw"] != pw:  # TODO: 암호화 처리 필요
                     raise Exception("Wrong Password")
                 return {
                     "user_id": user["user_id"],
@@ -113,7 +113,6 @@ class UserService:
                     update_info.get("email"),
                     user_id,
                 ))
-
                 await cur.execute("""
                     UPDATE user_detail 
                     SET height=%s, weight=%s, birth_date=%s, gender=%s, preferred_food=%s, preferred_tags=%s
@@ -127,7 +126,6 @@ class UserService:
                     update_info.get("preferred_tags"),
                     user_id,
                 ))
-
                 await conn.commit()
                 return {"msg": "회원 정보 수정 완료"}
 
@@ -139,7 +137,6 @@ class UserService:
         upload_dir = "uploads"
         os.makedirs(upload_dir, exist_ok=True)
 
-        # 메인 이미지 저장 및 경로 할당
         if image_file:
             filename = f"{uuid.uuid4().hex}_{image_file.filename}"
             filepath = os.path.join(upload_dir, filename)
@@ -149,7 +146,6 @@ class UserService:
         else:
             recipe_data["image_url"] = ""
 
-        # 단계별 이미지 저장 및 리스트 구성 (길이 20 보장)
         manual_img_paths = []
         if manual_imgs:
             for file in manual_imgs:
@@ -164,13 +160,11 @@ class UserService:
         else:
             manual_img_paths = [""] * 20
 
-        # 길이 맞추기
         if len(manual_img_paths) < 20:
             manual_img_paths += [""] * (20 - len(manual_img_paths))
         else:
             manual_img_paths = manual_img_paths[:20]
 
-        # recipe_data에 모든 MANUAL_IMG 키 할당
         for i in range(20):
             key = f"MANUAL_IMG{str(i+1).zfill(2)}"
             recipe_data[key] = manual_img_paths[i]
@@ -179,7 +173,6 @@ class UserService:
             val = data.get(key)
             return val if val is not None else ""
 
-        # 매뉴얼 텍스트도 20개 맞추기
         manual_texts = [recipe_data.get(f"MANUAL{str(i).zfill(2)}", "") or "" for i in range(1, 21)]
 
         form_data = {
@@ -194,13 +187,13 @@ class UserService:
             "INFO_NA": safe_get(recipe_data, "INFO_NA"),
             "RCP_NA_TIP": safe_get(recipe_data, "RCP_NA_TIP"),
             "image_url": safe_get(recipe_data, "image_url"),
+            # is_public 필드 제거하여 포함 안함
         }
+        
 
-        # 매뉴얼 텍스트 필드 추가
         for i, text in enumerate(manual_texts, start=1):
             form_data[f"MANUAL{str(i).zfill(2)}"] = text
 
-        # 매뉴얼 이미지 필드 추가
         for i in range(1, 21):
             form_data[f"MANUAL_IMG{str(i).zfill(2)}"] = safe_get(recipe_data, f"MANUAL_IMG{str(i).zfill(2)}")
 
@@ -245,11 +238,6 @@ class UserService:
             form_data["RCP_NA_TIP"],
         )
 
-        # 디버깅용 출력: 플레이스홀더 수와 인자 수, 인자 내용 확인
-        print(f"쿼리 내 플레이스홀더 개수: {query.count('%s')}, 인자 개수: {len(args)}")
-        for i, val in enumerate(args, 1):
-            print(f"{i}: {val}")
-
         pool = await get_db_pool()
         async with pool.acquire() as conn:
             async with conn.cursor() as cur:
@@ -257,6 +245,7 @@ class UserService:
                 await conn.commit()
                 await cur.execute("SELECT LAST_INSERT_ID()")
                 last_id = await cur.fetchone()
+            
                 return last_id[0]
 
     async def get_user_recipes(self, user_id: str):
@@ -308,9 +297,43 @@ class UserService:
             async with conn.cursor() as cur:
                 await cur.execute("DELETE FROM user_recipes WHERE id=%s AND user_id=%s", (recipe_id, user_id))
                 await conn.commit()
-                
+
+    # async def search_all_public_recipes(self, query: str) -> List[UserRecipeOut]:
+    #     pool = await get_db_pool()
+    #     async with pool.acquire() as conn:
+    #         async with conn.cursor(aiomysql.DictCursor) as cur:
+    #             await cur.execute(
+    #                 "SELECT * FROM user_recipes WHERE name LIKE %s ORDER BY created_at DESC",
+    #                 (f"%{query}%",)
+    #             )
+    #             rows = await cur.fetchall()
+    #             print(f"[search_all_public_recipes] 쿼리 결과 개수: {len(rows)}")
+    #             for r in rows:
+    #                 print(r.get("id"), r.get("name"))
+    #             return rows
+
+
     async def search_user_recipes(self, user_id: str, query: str) -> List[UserRecipeOut]:
-        recipes = await self.get_user_recipes(user_id)
-        # recipes가 dict 리스트라면 아래처럼!
-        filtered = [r for r in recipes if query.lower() in r["name"].lower()]
-        return filtered
+        pool = await get_db_pool()
+        async with pool.acquire() as conn:
+            async with conn.cursor(aiomysql.DictCursor) as cur:
+                await cur.execute(
+                    "SELECT * FROM user_recipes WHERE user_id=%s AND name LIKE %s ORDER BY created_at DESC",
+                    (user_id, f"%{query}%")
+                )
+                return await cur.fetchall()
+
+    # async def get_all_user_recipes(self, query: Optional[str] = None):
+    #     pool = await get_db_pool()
+    #     async with pool.acquire() as conn:
+    #         async with conn.cursor(aiomysql.DictCursor) as cur:
+    #             if query:
+    #                 await cur.execute(
+    #                     "SELECT * FROM user_recipes WHERE name LIKE %s ORDER BY created_at DESC",
+    #                     (f"%{query}%",)
+    #                 )
+    #             else:
+    #                 await cur.execute(
+    #                     "SELECT * FROM user_recipes ORDER BY created_at DESC"
+    #                 )
+    #             return await cur.fetchall()

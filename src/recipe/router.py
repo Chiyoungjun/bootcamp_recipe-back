@@ -23,7 +23,7 @@ import shutil
 import os
 from collections import Counter
 from ai.ai_model import model
-from typing import List
+from typing import List ,Optional
 
 from chatbot.chatbot import ask_chatbot # 정용우 추가
 from pydantic import BaseModel # 정용우 추가 # 요청 바디(JSON)**를 자동으로 파이썬 객체로 변환 # 클라이언트가 "레시피 알려줘"> request.message 로 사용
@@ -99,96 +99,122 @@ def search_recipes(q: str = Query(..., min_length=1), db: Session = Depends(get_
 # 레시피 상세보기 (번역기능 추가)
 # ---------------------------------
 # 백엔드: recipe/router.py (recipedetail API 일부 수정 예시)
-@router.get("/recipedetail")
-def recipe_detail(id: int = Query(...), user_id: str = Query(None), lang: str = Query("ko"),
-                  increment_view: bool = Query(True), db: Session = Depends(get_db)):
-    """상세레시피"""
+@router.get("/recipedetail") # 전체적으로 많이 바꿈(순서) # 정용우
+async def recipe_detail(
+    id: int = Query(...), 
+    user_id: Optional[str] = Query(None), # 정용우 수정. optional 추가
+    lang: str = Query("ko"), # 언어 설정, 기본값은 한국어 # 정용우 lang추가
+    increment_view: bool = Query(True), 
+    db: Session = Depends(get_db)
+):
+    
+    
+    
+    # 1. 레시피 조회 (+조회수 증가 처리)
     if increment_view:
         recipe = service.increase_recipe_view_count(id, db)
     else:
         recipe = db.query(Recipe).filter_by(id=id).first()
     if not recipe:
-        raise HTTPException(404, "레시피가 없습니다.")
+        raise HTTPException(404, "레시피가 없어요. 챗봇을 이용해주세요.") # 에러 문구 변경
 
-    if lang.lower() == "en":
-        try:
-            # 기존 번역 처리
-            name_and_desc = service.translate_texts([
-                recipe.name or "",
-                recipe.description or "",
-                recipe.RCP_NA_TIP or ""
-            ])
-            name, description, tip = name_and_desc[0], name_and_desc[1], name_and_desc[2]
+    # 2. 단계 텍스트 및 이미지 추출 
+    steps = []        # 텍스트
+    step_images = []  # 이미지 URL
+    for i in range(1, 21):
+        text = getattr(recipe, f"MANUAL{str(i).zfill(2)}")
+        img = getattr(recipe, f"MANUAL_IMG{str(i).zfill(2)}")
+        if text:
+            steps.append(text)
+            step_images.append(img)
 
-            ingredients = recipe.ingredients.split(",") if recipe.ingredients else []
-            ingredients_en = service.translate_texts(ingredients)
 
-            steps = [
-                getattr(recipe, f"MANUAL{str(i).zfill(2)}")
-                for i in range(1, 21) if getattr(recipe, f"MANUAL{str(i).zfill(2)}")
-            ]
-            steps_en = service.translate_texts(steps)
-
-            # 영어 만드는 법 단계+이미지 리스트 생성 (manual_en 필드 추가)
-            manual_en = [{"step": s, "img": getattr(recipe, f"MANUAL_IMG{str(i+1).zfill(2)}")} for i, s in enumerate(steps_en)]
-
-        except Exception as e:
-            raise HTTPException(500, f"번역 실패: {e}")
-
-        return {
-            "id": recipe.id,
-            "lang": "en",
-            "name": name,
-            "description": description,
-            "image_url": recipe.image_url,
-            "category": recipe.category,
-            "ingredients": ingredients_en,
-            "steps": steps_en,
-            "manual_en": manual_en,              # 영어 만드는 법 배열 포함
-            "INFO_ENG": recipe.INFO_ENG,
-            "INFO_CAR": recipe.INFO_CAR,
-            "INFO_PRO": recipe.INFO_PRO,
-            "INFO_FAT": recipe.INFO_FAT,
-            "INFO_NA": recipe.INFO_NA,
-            "RCP_NA_TIP": tip,
-            "RCP_NA_TIP_EN": tip,                # 영어 팁도 분리 가능
-            "avg_rating": float(recipe.avg_rating or 0),
-            "rating_count": recipe.rating_count or 0,
-            "view_count": recipe.view_count or 0,
-            "user_rating": 0,
-        }
-
-    # 기존 한국어 응답(변동 없음)
+    # 3. 사용자 평점 조회
     user_rating = 0
     if user_id:
         rating_entry = db.query(Rating).filter_by(recipe_id=id, user_id=user_id).first()
         if rating_entry:
             user_rating = rating_entry.rating
 
-    data = {
+
+    # 4. 한국어인 경우 → 번역 없이 반환
+    if lang.lower() == "ko":
+        data = {
+            "id": recipe.id,
+            "lang": "ko",
+            "name": recipe.name,
+            "description": recipe.description,
+            "image_url": recipe.image_url,
+            "category": recipe.category,
+            "ingredients": recipe.ingredients.split(",") if recipe.ingredients else [],
+            "INFO_ENG": recipe.INFO_ENG,
+            "INFO_CAR": recipe.INFO_CAR,
+            "INFO_PRO": recipe.INFO_PRO,
+            "INFO_FAT": recipe.INFO_FAT,
+            "INFO_NA": recipe.INFO_NA,
+            "RCP_NA_TIP": recipe.RCP_NA_TIP,
+            "avg_rating": float(recipe.avg_rating or 0),
+            "rating_count": recipe.rating_count or 0,
+            "view_count": recipe.view_count or 0,
+            "user_rating": user_rating,
+        }
+
+        # 단계 텍스트 및 이미지 포함
+        for i in range(len(steps)):
+            step_num = str(i + 1).zfill(2)
+            data[f"MANUAL{step_num}"] = steps[i]
+            data[f"MANUAL_IMG{step_num}"] = step_images[i]
+
+        return data
+
+
+    # 5. 다국어 번역 처리 (en, ja, zh-cn) #정용우
+    try:
+        # 기본 텍스트 + 재료 + 요리 단계 모음
+        texts_to_translate = [
+            recipe.name,
+            recipe.description or "",
+            recipe.RCP_NA_TIP or ""
+        ] + (recipe.ingredients.split(",") if recipe.ingredients else []) + steps
+
+        # 비동기 번역 실행
+        translated = await translate_texts(texts_to_translate, dest=lang)
+
+        # 번역 결과 분리
+        name = translated[0]
+        description = translated[1]
+        tip = translated[2]
+
+        ingredients_translated = translated[3:3 + len(recipe.ingredients.split(",")) if recipe.ingredients else 0]
+        steps_translated = translated[3 + len(ingredients_translated):]
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"번역 실패: {e}")
+
+
+
+    # 6. 최종 응답 구성
+    return {
         "id": recipe.id,
-        "lang": "ko",
-        "name": recipe.name,
-        "description": recipe.description,
+        "lang": lang,  # 요청된 언어
+        "name": name,
+        "description": description,
         "image_url": recipe.image_url,
         "category": recipe.category,
-        "ingredients": recipe.ingredients.split(",") if recipe.ingredients else [],
+        "ingredients": ingredients_translated,
+        "steps": steps_translated,
+        "step_images": step_images,  # 원본 이미지 그대로 반환
         "INFO_ENG": recipe.INFO_ENG,
         "INFO_CAR": recipe.INFO_CAR,
         "INFO_PRO": recipe.INFO_PRO,
         "INFO_FAT": recipe.INFO_FAT,
         "INFO_NA": recipe.INFO_NA,
-        "RCP_NA_TIP": recipe.RCP_NA_TIP,
+        "RCP_NA_TIP": tip,
         "avg_rating": float(recipe.avg_rating or 0),
         "rating_count": recipe.rating_count or 0,
         "view_count": recipe.view_count or 0,
         "user_rating": user_rating,
     }
-    for i in range(1, 21):
-        data[f"MANUAL{str(i).zfill(2)}"] = getattr(recipe, f"MANUAL{str(i).zfill(2)}")
-        data[f"MANUAL_IMG{str(i).zfill(2)}"] = getattr(recipe, f"MANUAL_IMG{str(i).zfill(2)}")
-    return data
-
 
 # ---------------------------------
 # 레시피 목록
@@ -265,79 +291,6 @@ def get_rankings(period: str = Query(..., regex="^(daily|weekly|monthly)$"), db:
 
 
 
-# ---------------------------------
-# BMI 기반 추천
-# ---------------------------------
-# @router.get("/recommendations/bmi")
-# def get_bmi_recommendations(user_id: str = Query(...), db: Session = Depends(get_db)):
-#     user_profile = db.query(UserDetail).filter_by(user_id=user_id).first()
-#     if not user_profile or not user_profile.height or not user_profile.weight:
-#         raise HTTPException(400, "사용자 신체 정보 필요")
-
-#     bmi = float(user_profile.weight) / ((float(user_profile.height) / 100) ** 2)
-#     bmi_class = classify_bmi(bmi)
-
-#     if bmi_class == "저체중":
-#         query = db.query(Recipe).filter(Recipe.category.in_(["밥", "구이, 찜"])).order_by(Recipe.INFO_ENG.desc())
-#     elif bmi_class == "정상":
-#         query = db.query(Recipe).order_by(Recipe.view_count.desc())
-#     elif bmi_class == "과체중":
-#         query = db.query(Recipe).filter(Recipe.category.in_(["샐러드", "국, 찌개", "반찬"])).order_by(Recipe.INFO_ENG.asc())
-#     else:
-#         query = db.query(Recipe).filter(Recipe.category.in_(["샐러드", "반찬"])).order_by(Recipe.INFO_ENG.asc())
-
-#     recipes = query.limit(10).all()
-#     return {
-#         "bmi": round(bmi, 2),
-#         "bmi_category": bmi_class,
-#         "recipes": [{
-#             "id": r.id,
-#             "name": r.name,
-#             "image_url": r.image_url,
-#             "category": r.category,
-#             "avg_rating": float(r.avg_rating or 0),
-#             "rating_count": r.rating_count or 0,
-#             "view_count": r.view_count or 0,
-#         } for r in recipes]
-#     }
-
-
-# ---------------------------------
-# 이미지 업로드 & 분석
-# ---------------------------------
-# @router.post("/recipes/upload")
-# async def upload_recipe_image(image: UploadFile = File(...), db: Session = Depends(get_db)):
-#     upload_dir = "temp_uploads"
-#     os.makedirs(upload_dir, exist_ok=True)
-#     file_path = os.path.join(upload_dir, image.filename)
-#     try:
-#         with open(file_path, "wb") as buffer:
-#             shutil.copyfileobj(image.file, buffer)
-#     except Exception as e:
-#         raise HTTPException(500, f"파일 저장 실패: {str(e)}")
-
-#     try:
-#         results = model(file_path)
-#     except Exception as e:
-#         os.remove(file_path)
-#         raise HTTPException(500, f"YOLO 추론 실패: {str(e)}")
-
-#     food_names = []
-#     for r in results:
-#         if hasattr(r, "boxes"):
-#             for box in r.boxes:
-#                 label = model.names[int(box.cls[0])]
-#                 food_names.append(label)
-#     os.remove(file_path)
-
-#     if not food_names:
-#         raise HTTPException(404, "이미지에서 음식을 인식하지 못했습니다.")
-
-#     search_name = Counter(food_names).most_common(1)[0][0].split("_", 1)[-1]
-#     recipes = service.get_recipe(search_name, db)
-#     if not recipes:
-#         raise HTTPException(404, f"{search_name} 기반 검색 결과 없음")
-#     return recipes
 
 
 # ---------------------------------

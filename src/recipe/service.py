@@ -21,6 +21,7 @@ from user.models import (
 # 번역 기능 추가 import
 from googletrans import Translator
 from typing import List
+import asyncio
 
 from ai.ai_model import category_model  # ML 모델 로드
 
@@ -45,12 +46,14 @@ def parse_ingredients(parts_dtl: str) -> list:
         return []
     return [x.strip() for x in parts_dtl.split(",") if x.strip()]
 
-def translate_texts(texts: List[str], dest: str = "en") -> List[str]:
+async def translate_texts(texts: List[str], dest: str = "en") -> List[str]:
     result = []
+    loop = asyncio.get_event_loop()
     for t in texts:
         s = t if t is not None else ""
         try:
-            translated = translator.translate(s, dest=dest)
+            # translator.translate가 동기 함수라면 run_in_executor로 비동기로 실행
+            translated = await loop.run_in_executor(None, translator.translate, s, dest)
             result.append(translated.text)
         except Exception as e:
             print(f"번역 중 오류 발생: {e}, 입력값: {s}")
