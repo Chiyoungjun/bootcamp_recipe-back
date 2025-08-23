@@ -139,7 +139,7 @@ class UserRecipe(Base):
     MANUAL_IMG19 = Column(String(255))
     MANUAL_IMG20 = Column(String(255))
 
-    category = Column(String(50))
+    # category = Column(String(50))
     ingredients = Column(Text)
 
     INFO_ENG = Column(String(20))

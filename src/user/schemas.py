@@ -87,7 +87,7 @@ class UserRecipeCreate(UserRecipeBase):
     MANUAL_IMG19: Optional[str] = None
     MANUAL_IMG20: Optional[str] = None
 
-    category: Optional[str] = None
+    # category: Optional[str] = None
     ingredients: Optional[str] = None
 
     INFO_ENG: Optional[str] = None
@@ -145,7 +145,7 @@ class UserRecipeUpdate(BaseModel):
     MANUAL_IMG19: Optional[str]
     MANUAL_IMG20: Optional[str]
 
-    category: Optional[str]
+    # category: Optional[str]
     ingredients: Optional[str]
 
     INFO_ENG: Optional[str]
@@ -164,6 +164,57 @@ class UserRecipeOut(UserRecipeBase):
     rating_count: int
     created_at: datetime
     updated_at: datetime
+
+    MANUAL01: Optional[str] = None
+    MANUAL02: Optional[str] = None
+    MANUAL03: Optional[str] = None
+    MANUAL04: Optional[str] = None
+    MANUAL05: Optional[str] = None
+    MANUAL06: Optional[str] = None
+    MANUAL07: Optional[str] = None
+    MANUAL08: Optional[str] = None
+    MANUAL09: Optional[str] = None
+    MANUAL10: Optional[str] = None
+    MANUAL11: Optional[str] = None
+    MANUAL12: Optional[str] = None
+    MANUAL13: Optional[str] = None
+    MANUAL14: Optional[str] = None
+    MANUAL15: Optional[str] = None
+    MANUAL16: Optional[str] = None
+    MANUAL17: Optional[str] = None
+    MANUAL18: Optional[str] = None
+    MANUAL19: Optional[str] = None
+    MANUAL20: Optional[str] = None
+
+    MANUAL_IMG01: Optional[str] = None
+    MANUAL_IMG02: Optional[str] = None
+    MANUAL_IMG03: Optional[str] = None
+    MANUAL_IMG04: Optional[str] = None
+    MANUAL_IMG05: Optional[str] = None
+    MANUAL_IMG06: Optional[str] = None
+    MANUAL_IMG07: Optional[str] = None
+    MANUAL_IMG08: Optional[str] = None
+    MANUAL_IMG09: Optional[str] = None
+    MANUAL_IMG10: Optional[str] = None
+    MANUAL_IMG11: Optional[str] = None
+    MANUAL_IMG12: Optional[str] = None
+    MANUAL_IMG13: Optional[str] = None
+    MANUAL_IMG14: Optional[str] = None
+    MANUAL_IMG15: Optional[str] = None
+    MANUAL_IMG16: Optional[str] = None
+    MANUAL_IMG17: Optional[str] = None
+    MANUAL_IMG18: Optional[str] = None
+    MANUAL_IMG19: Optional[str] = None
+    MANUAL_IMG20: Optional[str] = None
+
+    # category: Optional[str] = None
+    ingredients: Optional[str] = None
+    INFO_ENG: Optional[str] = None
+    INFO_CAR: Optional[str] = None
+    INFO_PRO: Optional[str] = None
+    INFO_FAT: Optional[str] = None
+    INFO_NA: Optional[str] = None
+    RCP_NA_TIP: Optional[str] = None
 
     class Config:
         from_attributes = True

@@ -32,3 +32,9 @@ app.include_router(ai_router, prefix="/api")
 app.include_router(maps_router)  # ★카카오맵 검색 api 등록!
 app.include_router(chatbot_router)
 app.mount("/uploads", StaticFiles(directory="uploads"), name="uploads")
+
+# for route in app.routes:
+#     try:
+#         print(route.path, route.methods)
+#     except Exception as e:
+#         print(route.path, "NO METHODS", e)
