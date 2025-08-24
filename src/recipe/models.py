@@ -1,11 +1,12 @@
 from sqlalchemy import (
-    Column, Integer, String, Text, DECIMAL, DateTime, ForeignKey, Enum, Date
+    Column, Integer, String, Text, DECIMAL, DateTime, ForeignKey, Enum, Date, Computed
 )
-from sqlalchemy.orm import relationship
+from sqlalchemy.orm import relationship, deferred
 from datetime import datetime
 import enum
 
-from base import Base  # src/base.py에 선언한 Base 사용
+from base import Base
+
 
 # ----------- Enum 정의 ----------
 class PeriodTypeEnum(enum.Enum):
@@ -18,7 +19,7 @@ class PeriodTypeEnum(enum.Enum):
 class Recipe(Base):
     __tablename__ = 'recipes'
 
-    id = Column(Integer, primary_key=True)  # 외부 API의 RCP_SEQ
+    id = Column(Integer, primary_key=True) 
     name = Column(String(255), nullable=False)
     description = Column(Text)
     image_url = Column(String(255))
@@ -79,7 +80,7 @@ class Recipe(Base):
     MANUAL_IMG20 = Column(String(255))
 
     # 관계 설정
-    ratings = relationship("Rating", back_populates="recipe", cascade="all, delete-orphan")
+    ratings = relationship("Rating", back_populates="recipe")
     rating_histories = relationship("RecipeRatingHistories", back_populates="recipe", cascade="all, delete-orphan")
     view_count_histories = relationship("RecipeViewCountHistories", back_populates="recipe", cascade="all, delete-orphan")
     favorited_by = relationship("UserFavorites", back_populates="recipe", cascade="all, delete-orphan")
@@ -88,15 +89,16 @@ class Recipe(Base):
 # ----------- Rating 테이블 ----------
 class Rating(Base):
     __tablename__ = 'ratings'
-
     id = Column(Integer, primary_key=True, autoincrement=True)
-    recipe_id = Column(Integer, ForeignKey('recipes.id', ondelete='CASCADE'), nullable=False)
+    recipe_id = Column(Integer, ForeignKey('recipes.id'), nullable=True)
+    user_recipe_id = Column(Integer, ForeignKey('user_recipes.id'), nullable=True)
     user_id = Column(String(50), ForeignKey('user.user_id', ondelete='CASCADE'), nullable=False)
     rating = Column(Integer, nullable=False)
     created_at = Column(DateTime, default=datetime.now)
     updated_at = Column(DateTime, default=datetime.now, onupdate=datetime.now)
 
-    recipe = relationship("Recipe", back_populates="ratings")
+    recipe = relationship("Recipe", back_populates="ratings", foreign_keys=[recipe_id])
+    user_recipe = relationship("UserRecipe", back_populates="ratings", foreign_keys=[user_recipe_id])
     user = relationship("User", back_populates="ratings")
 
 
@@ -105,16 +107,20 @@ class RecipeRatingHistories(Base):
     __tablename__ = 'recipe_rating_histories'
 
     id = Column(Integer, primary_key=True, autoincrement=True)
-    recipe_id = Column(Integer, ForeignKey('recipes.id', ondelete='CASCADE'), nullable=False)
+    recipe_id = Column(Integer, ForeignKey('recipes.id', ondelete='CASCADE'), nullable=True)  # 기본 레시피용 (nullable 허용)
+    user_recipe_id = Column(Integer, ForeignKey('user_recipes.id', ondelete='CASCADE'), nullable=True)  # 사용자 레시피용 (nullable 허용)
     period_type = Column(Enum(PeriodTypeEnum), nullable=False)
     period_start_date = Column(Date, nullable=False)
     rating_sum = Column(Integer, default=0, nullable=False)
     rating_count = Column(Integer, default=0, nullable=False)
-    avg_rating = Column(DECIMAL(3, 2))
+    avg_rating = Column(DECIMAL(3, 2), Computed("rating_sum / rating_count"), nullable=True)
     created_at = Column(DateTime, default=datetime.now)
     updated_at = Column(DateTime, default=datetime.now, onupdate=datetime.now)
 
+    # 관계 설정
     recipe = relationship("Recipe", back_populates="rating_histories")
+    user_recipe = relationship("UserRecipe")  # 사용자 레시피 관계 추가
+
 
 
 # ----------- RecipeViewCountHistories 테이블 ----------

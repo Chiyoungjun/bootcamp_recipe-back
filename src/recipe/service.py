@@ -1,45 +1,40 @@
 import requests
 import urllib.parse
 from sqlalchemy.orm import Session
+from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from datetime import datetime, timedelta, date
+from fastapi import HTTPException
 from collections import Counter
 from ai.ai_model import category_model, vectorizer, manual_map
 
-
-# recipe 폴더 안 models.py
+# recipe/models.py
 from .models import (
-    Recipe, Rating, RecipeRatingHistories, RecipeViewCountHistories,
+    Recipe,Rating, RecipeRatingHistories, RecipeViewCountHistories,
     PeriodTypeEnum
 )
 
-# user 폴더 안 models.py
+# user/models.py
 from user.models import (
-    UserSearchHistory, UserFavorites
+    UserSearchHistory, UserFavorites, UserRecipe
 )
 
-# 번역 기능 추가 import
+# 번역 관련 import
 from googletrans import Translator
 from typing import List
 import asyncio
 
-from ai.ai_model import category_model  # ML 모델 로드
-
 translator = Translator()
+
+API_KEY = "62f25c3fe3fb40deb80c"  # API 키 꼭 선언해 주세요
 
 def predict_recipe_category(name: str, description: str) -> str:
     text = (name or "") + " " + (description or "")
     X = vectorizer.transform([text])
     cluster_num = int(category_model.predict(X)[0])
-
-    # 병합 로직
-    if cluster_num in [3, 11, 12,13]:
-        cluster_num = 2  # 병합된 '한식' 군집 번호
-
+    if cluster_num in [3, 11, 12, 13]:
+        cluster_num = 2
     return manual_map.get(cluster_num, str(cluster_num))
-
-
-API_KEY = "62f25c3fe3fb40deb80c"
 
 def parse_ingredients(parts_dtl: str) -> list:
     if not parts_dtl:
@@ -52,7 +47,6 @@ async def translate_texts(texts: List[str], dest: str = "en") -> List[str]:
     for t in texts:
         s = t if t is not None else ""
         try:
-            # translator.translate가 동기 함수라면 run_in_executor로 비동기로 실행
             translated = await loop.run_in_executor(None, translator.translate, s, dest)
             result.append(translated.text)
         except Exception as e:
@@ -82,15 +76,8 @@ def fetch_and_save_all_recipes(db: Session, total=40000, batch_size=500):
                         manual_fields[mkey] = row.get(mkey)
                         manual_fields[ikey] = row.get(ikey)
 
-                    info_eng = row.get("INFO_ENG")
-                    info_car = row.get("INFO_CAR")
-                    info_pro = row.get("INFO_PRO")
-                    info_fat = row.get("INFO_FAT")
-                    info_na = row.get("INFO_NA")
-                    rcp_na_tip = row.get("RCP_NA_TIP")
                     ingredients = parse_ingredients(row.get("RCP_PARTS_DTLS", ""))
 
-                    # ML 모델로 카테고리 예측
                     ml_category = predict_recipe_category(row.get("RCP_NM", ""), row.get("RCP_PARTS_DTLS", ""))
 
                     recipe = db.query(Recipe).filter_by(id=rid).first()
@@ -100,12 +87,12 @@ def fetch_and_save_all_recipes(db: Session, total=40000, batch_size=500):
                         recipe.image_url = row.get("ATT_FILE_NO_MAIN")
                         recipe.category = ml_category
                         recipe.ingredients = ",".join(ingredients) if isinstance(ingredients, list) else ingredients
-                        recipe.INFO_ENG = info_eng
-                        recipe.INFO_CAR = info_car
-                        recipe.INFO_PRO = info_pro
-                        recipe.INFO_FAT = info_fat
-                        recipe.INFO_NA = info_na
-                        recipe.RCP_NA_TIP = rcp_na_tip
+                        recipe.INFO_ENG = row.get("INFO_ENG")
+                        recipe.INFO_CAR = row.get("INFO_CAR")
+                        recipe.INFO_PRO = row.get("INFO_PRO")
+                        recipe.INFO_FAT = row.get("INFO_FAT")
+                        recipe.INFO_NA = row.get("INFO_NA")
+                        recipe.RCP_NA_TIP = row.get("RCP_NA_TIP")
                         for key, val in manual_fields.items():
                             setattr(recipe, key, val)
                     else:
@@ -116,12 +103,12 @@ def fetch_and_save_all_recipes(db: Session, total=40000, batch_size=500):
                             description=row.get("RCP_PARTS_DTLS", ""),
                             category=ml_category,
                             ingredients=",".join(ingredients) if isinstance(ingredients, list) else ingredients,
-                            INFO_ENG=info_eng,
-                            INFO_CAR=info_car,
-                            INFO_PRO=info_pro,
-                            INFO_FAT=info_fat,
-                            INFO_NA=info_na,
-                            RCP_NA_TIP=rcp_na_tip,
+                            INFO_ENG=row.get("INFO_ENG"),
+                            INFO_CAR=row.get("INFO_CAR"),
+                            INFO_PRO=row.get("INFO_PRO"),
+                            INFO_FAT=row.get("INFO_FAT"),
+                            INFO_NA=row.get("INFO_NA"),
+                            RCP_NA_TIP=row.get("RCP_NA_TIP"),
                             **manual_fields
                         )
                         db.add(recipe)
@@ -185,26 +172,42 @@ def get_recipe_detail(recipe_id: int, db: Session):
 def get_recipe_list(db: Session):
     return db.query(Recipe).all()
 
-def increase_recipe_view_count(recipe_id: int, db: Session):
-    recipe = db.query(Recipe).filter_by(id=recipe_id).first()
-    if recipe:
-        recipe.view_count = (recipe.view_count or 0) + 1
-        today = date.today()
-        view_hist = db.query(RecipeViewCountHistories).filter_by(recipe_id=recipe_id, date=today).first()
-        if view_hist:
-            view_hist.view_count += 1
-            view_hist.updated_at = datetime.now()
-        else:
-            view_hist = RecipeViewCountHistories(
-                recipe_id=recipe_id,
-                date=today,
-                view_count=1,
-                created_at=datetime.now(),
-                updated_at=datetime.now()
-            )
-            db.add(view_hist)
-        db.commit()
-        db.refresh(recipe)
+def increase_recipe_view_count(recipe_id: int = None, user_recipe_id: int = None, db: Session = None):
+    if not (recipe_id or user_recipe_id):
+        raise ValueError("recipe_id 또는 user_recipe_id 중 하나를 반드시 제공해야 합니다.")
+
+    if recipe_id:
+        recipe = db.query(Recipe).filter_by(id=recipe_id).first()
+        history_filter = {'recipe_id': recipe_id}
+    elif user_recipe_id:
+        recipe = db.query(UserRecipe).filter_by(id=user_recipe_id).first()
+        history_filter = {'user_recipe_id': user_recipe_id}
+
+    if not recipe:
+        raise HTTPException(status_code=404, detail="레시피를 찾을 수 없습니다.")
+
+    # 조회수 증가
+    recipe.view_count = (recipe.view_count or 0) + 1
+
+    today = date.today()
+    view_hist = db.query(RecipeViewCountHistories).filter_by(date=today, **history_filter).first()
+
+    if view_hist:
+        view_hist.view_count += 1
+        view_hist.updated_at = datetime.now()
+    else:
+        view_hist = RecipeViewCountHistories(
+            date=today,
+            view_count=1,
+            created_at=datetime.now(),
+            updated_at=datetime.now(),
+            **history_filter
+        )
+        db.add(view_hist)
+
+    db.commit()
+    db.refresh(recipe)
+
     return recipe
 
 def get_period_start_dates(nowdt: datetime):
@@ -213,72 +216,168 @@ def get_period_start_dates(nowdt: datetime):
     monthly = nowdt.replace(day=1).date()
     return daily, weekly, monthly
 
-def add_or_update_rating(recipe_id: int, user_id: str, score: int, db: Session):
-    rating = db.query(Rating).filter_by(recipe_id=recipe_id, user_id=user_id).first()
-    if rating:
+def add_or_update_rating(user_id, score, recipe_id=None, user_recipe_id=None, db=None):
+    if not (recipe_id or user_recipe_id):
+        raise ValueError("recipe_id 또는 user_recipe_id 중 하나를 반드시 제공해야 합니다.")
+
+    rating_filter = {'user_id': user_id}
+    if recipe_id:
+        rating_filter['recipe_id'] = recipe_id
+    else:
+        rating_filter['user_recipe_id'] = user_recipe_id
+
+    existing_rating = db.query(Rating).filter_by(**rating_filter).first()
+    if existing_rating:
         raise ValueError("이미 별점을 등록하셨습니다.")
+
     now = datetime.now()
-    new_rating = Rating(recipe_id=recipe_id, user_id=user_id, rating=score, created_at=now, updated_at=now)
+
+    new_rating = Rating(
+        rating=score,
+        user_id=user_id,
+        created_at=now,
+        updated_at=now,
+    )
+
+    if recipe_id is not None:
+        new_rating.recipe_id = recipe_id
+        new_rating.user_recipe_id = None
+    else:
+        new_rating.user_recipe_id = user_recipe_id
+        new_rating.recipe_id = None
+
+    # 삽입 직전 상태 출력
+    print("Before flush - recipe_id:", new_rating.recipe_id, "user_recipe_id:", new_rating.user_recipe_id)
+
     db.add(new_rating)
     db.flush()
+
     daily, weekly, monthly = get_period_start_dates(now)
-    for period_type, period_start_date in [
-        ('daily', daily), ('weekly', weekly), ('monthly', monthly)
-    ]:
+    for period_type, period_start_date in [('daily', daily), ('weekly', weekly), ('monthly', monthly)]:
+        hist_data = {
+            "period_type": PeriodTypeEnum(period_type),
+            "period_start_date": period_start_date,
+            "rating_sum": score,
+            "rating_count": 1,
+            "created_at": now,
+            "updated_at": now
+        }
+        if recipe_id is not None:
+            hist_data["recipe_id"] = recipe_id
+        if user_recipe_id is not None:
+            hist_data["user_recipe_id"] = user_recipe_id
+
+        # 생성 컬럼 avg_rating은 절대로 포함하지 않음
+        # 필드를 직접 명시해서 exclude 하거나 dict를 써서 생성 시 제외
+
         hist = db.query(RecipeRatingHistories).filter_by(
             recipe_id=recipe_id,
+            user_recipe_id=user_recipe_id,
             period_type=PeriodTypeEnum(period_type),
             period_start_date=period_start_date
         ).first()
+
         if hist:
             hist.rating_sum += score
             hist.rating_count += 1
             hist.updated_at = now
+            # 절대 avg_rating 직접 수정하지 말 것
         else:
-            hist = RecipeRatingHistories(
-                recipe_id=recipe_id,
-                period_type=PeriodTypeEnum(period_type),
-                period_start_date=period_start_date,
-                rating_sum=score,
-                rating_count=1,
-                created_at=now,
-                updated_at=now
-            )
+            hist = RecipeRatingHistories(**hist_data)
             db.add(hist)
-    ratings = db.query(Rating).filter_by(recipe_id=recipe_id).all()
+
+    if recipe_id:
+        ratings = db.query(Rating).filter_by(recipe_id=recipe_id).all()
+        recipe = db.query(Recipe).filter_by(id=recipe_id).first()
+    else:
+        ratings = db.query(Rating).filter_by(user_recipe_id=user_recipe_id).all()
+        recipe = db.query(UserRecipe).filter_by(id=user_recipe_id).first()
+
     avg = sum(r.rating for r in ratings) / len(ratings) if ratings else 0
-    recipe = db.query(Recipe).filter_by(id=recipe_id).first()
     recipe.avg_rating = avg
     recipe.rating_count = len(ratings)
+
     db.commit()
     db.refresh(recipe)
+
     return recipe
 
-def save_search_history(user_id: str, recipe_id: int, search_word: str, db: Session):
-    history = UserSearchHistory(
-        user_id=user_id,
-        recipe_id=recipe_id,
-        search_word=search_word,
-        search_time=datetime.now()
-    )
-    db.add(history)
-    db.commit()
-    db.refresh(history)
-    return history
 
-def add_to_favorites(user_id: str, recipe_id: int, db: Session):
-    fav = UserFavorites(user_id=user_id, recipe_id=recipe_id)
-    db.add(fav)
+def save_search_history(user_id: str, search_word: str, recipe_id: int = None, user_recipe_id: int = None, db: Session = None):
+    if not (recipe_id or user_recipe_id):
+        raise ValueError("recipe_id 또는 user_recipe_id 중 하나를 반드시 제공해야 합니다.")
+
     try:
+        # 중복 체크: user_recipe_id 우선
+        if user_recipe_id is not None:
+            existing = db.query(UserSearchHistory).filter_by(user_id=user_id, user_recipe_id=user_recipe_id).first()
+            if existing:
+                return existing
+
+        # recipe_id 중복 체크
+        if recipe_id is not None:
+            existing = db.query(UserSearchHistory).filter_by(user_id=user_id, recipe_id=recipe_id).first()
+            if existing:
+                return existing
+
+        history = UserSearchHistory(
+            user_id=user_id,
+            search_word=search_word,
+            recipe_id=recipe_id,
+            user_recipe_id=user_recipe_id,
+            search_time=datetime.now()
+        )
+        db.add(history)
         db.commit()
-        db.refresh(fav)
-        return fav
+        db.refresh(history)
+        return history
+
     except IntegrityError:
         db.rollback()
+        # 중복 발생 시 기존 데이터 재조회 후 반환
+        existing = None
+        if user_recipe_id is not None:
+            existing = db.query(UserSearchHistory).filter_by(user_id=user_id, user_recipe_id=user_recipe_id).first()
+        if existing is None and recipe_id is not None:
+            existing = db.query(UserSearchHistory).filter_by(user_id=user_id, recipe_id=recipe_id).first()
+        if existing:
+            return existing
+        raise 
+
+def add_to_favorites(user_id: str, recipe_id: int = None, user_recipe_id: int = None, db: Session = None):
+    if not (recipe_id or user_recipe_id):
+        raise ValueError("recipe_id 또는 user_recipe_id 중 하나를 반드시 제공해야 합니다.")
+
+    query = db.query(UserFavorites).filter(UserFavorites.user_id == user_id)
+
+    if recipe_id is not None:
+        query = query.filter(UserFavorites.recipe_id == recipe_id)
+    elif user_recipe_id is not None:
+        query = query.filter(UserFavorites.user_recipe_id == user_recipe_id)
+
+    fav = query.first()
+    if fav:
         raise ValueError("이미 찜한 레시피입니다.")
 
-def remove_from_favorites(user_id: str, recipe_id: int, db: Session):
-    fav = db.query(UserFavorites).filter_by(user_id=user_id, recipe_id=recipe_id).first()
+    new_fav = UserFavorites(
+        user_id=user_id,
+        recipe_id=recipe_id if recipe_id and user_recipe_id is None else None,
+        user_recipe_id=user_recipe_id if user_recipe_id else None,
+        created_at=datetime.now()
+    )
+    db.add(new_fav)
+    db.commit()
+    db.refresh(new_fav)
+    return new_fav
+
+
+
+def remove_from_favorites(user_id: str, recipe_id: int = None, user_recipe_id: int = None, db: Session = None):
+    fav = db.query(UserFavorites).filter_by(
+        user_id=user_id,
+        recipe_id=recipe_id,
+        user_recipe_id=user_recipe_id
+    ).first()
     if fav:
         db.delete(fav)
         db.commit()
@@ -286,7 +385,16 @@ def remove_from_favorites(user_id: str, recipe_id: int, db: Session):
     else:
         raise ValueError("찜 목록에 없습니다.")
 
-def get_user_favorites(user_id: str, db: Session):
+def get_user_favorites(user_id: str, db: Session = None):
     favs = db.query(UserFavorites).filter_by(user_id=user_id).all()
-    recipes = [db.query(Recipe).filter_by(id=fav.recipe_id).first() for fav in favs]
-    return recipes
+    result = []
+    for fav in favs:
+        recipe = None
+        if fav.recipe_id:
+            recipe = db.query(Recipe).filter_by(id=fav.recipe_id).first()
+        elif fav.user_recipe_id:
+            recipe = db.query(UserRecipe).filter_by(id=fav.user_recipe_id).first()
+        if recipe:
+            result.append(recipe)
+    return result
+

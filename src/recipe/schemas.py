@@ -1,20 +1,26 @@
 from pydantic import BaseModel
+from typing import List, Optional
 
 # 평점 입력용 Pydantic 모델
 class RatingRequest(BaseModel):
     user_id: str
     rating: int
+    recipe_id: Optional[int] = None
+    user_recipe_id: Optional[int] = None
 
 # 즐겨찾기(찜) 관련 Pydantic 모델 추가
 class FavoriteRequest(BaseModel):
     user_id: str
-    recipe_id: int
+    recipe_id: Optional[int] = None
+    user_recipe_id: Optional[int] = None
 
 # 사용자 검색 이력 저장용 Pydantic 모델
 class SearchHistoryRequest(BaseModel):
     user_id: str
     recipe_id: int = None
+    user_recipe_id: int = None 
     search_word: str
+
 
 # 사용자 검색 이력 응답용 Pydantic 모델
 class SearchHistoryResponse(BaseModel):

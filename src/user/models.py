@@ -4,7 +4,6 @@ from datetime import datetime
 from base import Base  # src/base.py 또는 공용 Base import
 
 
-# ----------- User 테이블 ----------
 class User(Base):
     __tablename__ = 'user'
 
@@ -21,9 +20,9 @@ class User(Base):
     user_recipes = relationship("UserRecipe", back_populates="user", cascade="all, delete-orphan")  # ← 추가됨
 
 
-# ----------- UserDetail ----------
 class UserDetail(Base):
     __tablename__ = 'user_detail'
+
     user_id = Column(String(50), ForeignKey('user.user_id', ondelete='CASCADE'), primary_key=True)
     height = Column(Float, nullable=True)
     weight = Column(Float, nullable=True)
@@ -37,20 +36,19 @@ class UserDetail(Base):
     user = relationship("User", back_populates="user_detail")
 
 
-# ----------- UserSearchHistory ----------
 class UserSearchHistory(Base):
     __tablename__ = 'user_search_history'
 
     id = Column(Integer, primary_key=True, autoincrement=True)
     user_id = Column(String(50), ForeignKey('user.user_id', ondelete='CASCADE'), nullable=False)
     recipe_id = Column(Integer, ForeignKey('recipes.id', ondelete='CASCADE'), nullable=True)
+    user_recipe_id = Column(Integer, nullable=True)
     search_word = Column(String(255), nullable=False)
     search_time = Column(DateTime, default=datetime.now, nullable=False)
 
     user = relationship("User", back_populates="search_histories")
 
 
-# ----------- UserBmiRecommendation ----------
 class UserBmiRecommendation(Base):
     __tablename__ = 'user_bmi_recommendation'
 
@@ -65,23 +63,22 @@ class UserBmiRecommendation(Base):
     user = relationship("User", back_populates="bmi_recommendations")
 
 
-# ----------- UserFavorites ----------
 class UserFavorites(Base):
     __tablename__ = 'user_favorites'
+
     id = Column(Integer, primary_key=True, autoincrement=True)
     user_id = Column(String(50), ForeignKey('user.user_id', ondelete='CASCADE'), nullable=False)
     recipe_id = Column(Integer, ForeignKey('recipes.id', ondelete='CASCADE'), nullable=False)
+    user_recipe_id = Column(Integer, ForeignKey('user_recipes.id', ondelete='CASCADE'), nullable=True)  # 추가
+
     created_at = Column(DateTime, default=datetime.now, nullable=False)
 
     user = relationship("User", back_populates="favorites")
     recipe = relationship("Recipe", back_populates="favorited_by")
-
-    __table_args__ = (
-        UniqueConstraint('user_id', 'recipe_id', name='unique_user_recipe_favorite'),
-    )
+    user_recipe = relationship("UserRecipe")  # 관계 추가
 
 
-# ---------- UserRecipe(유저작성 레시피) ----------
+
 class UserRecipe(Base):
     __tablename__ = 'user_recipes'
 
@@ -91,12 +88,11 @@ class UserRecipe(Base):
     description = Column(Text, nullable=True)
     image_url = Column(String(255), nullable=True)
     view_count = Column(Integer, default=0)
-    avg_rating = Column(DECIMAL(3, 2), default=0.00)
+    avg_rating = Column(DECIMAL(3, 2), default=0)
     rating_count = Column(Integer, default=0)
     created_at = Column(DateTime, default=datetime.now)
     updated_at = Column(DateTime, default=datetime.now, onupdate=datetime.now)
 
-    # 단계별 내용 필드들
     MANUAL01 = Column(Text)
     MANUAL02 = Column(Text)
     MANUAL03 = Column(Text)
@@ -139,7 +135,6 @@ class UserRecipe(Base):
     MANUAL_IMG19 = Column(String(255))
     MANUAL_IMG20 = Column(String(255))
 
-    # category = Column(String(50))
     ingredients = Column(Text)
 
     INFO_ENG = Column(String(20))
@@ -151,3 +146,6 @@ class UserRecipe(Base):
     RCP_NA_TIP = Column(Text)
 
     user = relationship("User", back_populates="user_recipes")
+    ratings = relationship("Rating", back_populates="user_recipe")
+
+

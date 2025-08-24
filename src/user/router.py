@@ -1,12 +1,20 @@
 from fastapi import APIRouter, HTTPException, Request, Form, UploadFile, File, Query, Depends
 from typing import List, Optional
 from sqlalchemy.orm import Session
+from datetime import datetime
 
 from .service import UserService
 from .schemas import UserRecipeOut, UserRecipeUpdate
-from user.models import UserRecipe
+from user.models import UserRecipe, User
 from database import get_db
+from recipe.service import add_or_update_rating
 
+
+# 아래를 추가 (폴더별 __init__.py 있으면 작동, 없는 경우 만들어주세요)
+from sqlalchemy import func
+from recipe.models import Rating                # 기본/사용자 레시피 별점 모델
+from recipe.schemas import RatingRequest  
+# 별점 등록용 Pydantic 스키마
 router = APIRouter()
 service = UserService()
 
@@ -203,11 +211,24 @@ async def get_user_recipes(user_id: str, db: Session = Depends(get_db)):
 
 @router.get("/{user_id}/recipes/{recipe_id}", response_model=UserRecipeOut)
 async def get_one_user_recipe(user_id: str, recipe_id: int, db: Session = Depends(get_db)):
-    recipe = db.query(UserRecipe).filter(UserRecipe.user_id == user_id, UserRecipe.id == recipe_id).first()
-    if not recipe:
-        raise HTTPException(status_code=404, detail="Recipe not found")
+    # 작성자 이름 포함 조인 쿼리
+    result = (
+        db.query(UserRecipe, User.ko_name.label("author_name"))
+        .join(User, UserRecipe.user_id == User.user_id)
+        .filter(UserRecipe.user_id == user_id, UserRecipe.id == recipe_id)
+        .first()
+    )
 
-    recipe_dict = recipe.__dict__
+    if not result:
+        raise HTTPException(status_code=404, detail="Recipe not found")
+    
+    recipe, author_name = result
+
+    # recipe를 dict로 변환하고 author_name 추가
+    recipe_dict = recipe.__dict__.copy()
+    recipe_dict["author_name"] = author_name
+
+    # 메뉴얼 빈 항목 제거
     filtered_recipe = filter_non_empty_manuals(recipe_dict)
 
     return filtered_recipe
@@ -224,15 +245,70 @@ async def delete_user_recipe(user_id: str, recipe_id: int, db: Session = Depends
     await service.delete_user_recipe(user_id, recipe_id)
     return {"message": "Recipe deleted"}
 
-@router.get("/recipes/{recipe_id}", response_model=UserRecipeOut)
-async def get_public_recipe(recipe_id: int, db: Session = Depends(get_db)):
+
+@router.post("/recipes/{user_recipe_id}/rating")
+def rate_user_recipe(user_recipe_id: int, req: RatingRequest, db: Session = Depends(get_db)):
+    try:
+        # 함수 호출 로그 출력
+        print(f"rate_user_recipe 호출됨 user_recipe_id={user_recipe_id}, user_id={req.user_id}, rating={req.rating}")
+
+        recipe = add_or_update_rating(
+            user_id=req.user_id,
+            score=req.rating,
+            recipe_id=None,
+            user_recipe_id=user_recipe_id,
+            db=db,
+        )
+
+        print(f"add_or_update_rating 반환: recipe.avg_rating={recipe.avg_rating}, rating_count={recipe.rating_count}")
+
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+    avg = db.query(Rating).filter_by(user_recipe_id=user_recipe_id).with_entities(func.avg(Rating.rating)).scalar()
+    count = db.query(Rating).filter_by(user_recipe_id=user_recipe_id).count()
+
+    recipe.avg_rating = round(avg or 0, 2)
+    recipe.rating_count = count
+    db.commit()
+    db.refresh(recipe)
+
+    return {"success": True, "avg_rating": recipe.avg_rating, "rating_count": recipe.rating_count}
+
+
+
+@router.get("/recipes/{recipe_id}")
+def get_user_recipe_detail(
+    recipe_id: int,
+    user_id: str = Query(None),
+    increment_view: bool = Query(True),
+    db: Session = Depends(get_db),
+):
     recipe = db.query(UserRecipe).filter(UserRecipe.id == recipe_id).first()
     if not recipe:
-        raise HTTPException(status_code=404, detail="Recipe not found")
+        raise HTTPException(status_code=404, detail="사용자 레시피를 찾을 수 없습니다.")
 
-    recipe_dict = recipe.__dict__
-    filtered_recipe = filter_non_empty_manuals(recipe_dict)
-    return filtered_recipe
+    if increment_view:
+        recipe.view_count = (recipe.view_count or 0) + 1
+        recipe.updated_at = datetime.now()
+        db.commit()
+        db.refresh(recipe)
+
+    user_rating = 0
+    if user_id:
+        rating_obj = db.query(Rating).filter(
+            Rating.user_id == user_id,
+            Rating.user_recipe_id == recipe_id
+        ).first()
+        if rating_obj:
+            user_rating = rating_obj.rating
+
+        print(f"[DEBUG] user_id={user_id}, recipe_id={recipe_id}, user_rating={user_rating}")
+
+    recipe_dict = recipe.__dict__.copy()
+    recipe_dict["user_rating"] = user_rating
+
+    return recipe_dict
 
 
 

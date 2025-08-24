@@ -253,8 +253,19 @@ class UserService:
         pool = await get_db_pool()
         async with pool.acquire() as conn:
             async with conn.cursor(aiomysql.DictCursor) as cur:
-                await cur.execute("SELECT * FROM user_recipes WHERE user_id=%s ORDER BY created_at DESC", (user_id,))
+                await cur.execute(
+                    """
+                    SELECT r.*, u.ko_name AS author_name
+                    FROM user_recipes r
+                    LEFT JOIN user u ON r.user_id = u.user_id
+                    WHERE r.user_id = %s
+                    ORDER BY r.created_at DESC
+                    """,
+                    (user_id,)
+                )
                 return await cur.fetchall()
+
+
 
     async def get_user_recipe(self, user_id: str, recipe_id: int):
         pool = await get_db_pool()
@@ -311,14 +322,33 @@ class UserService:
                     (user_id, f"%{query}%")
                 )
                 return await cur.fetchall()
-
     async def get_user_recipe_detail(self, user_id: str, recipe_id: int):
         pool = await get_db_pool()
         async with pool.acquire() as conn:
             async with conn.cursor(aiomysql.DictCursor) as cur:
                 await cur.execute(
-                    "SELECT * FROM user_recipes WHERE user_id=%s AND id=%s",
+                    """
+                    SELECT r.*, u.ko_name AS author_name
+                    FROM user_recipes r
+                    LEFT JOIN user u ON r.user_id = u.user_id
+                    WHERE r.user_id = %s AND r.id = %s
+                    """,
                     (user_id, recipe_id)
                 )
                 recipe = await cur.fetchone()
                 return recipe
+
+
+
+
+    # async def get_user_recipe_detail(self, user_id: str, recipe_id: int):
+    #     pool = await get_db_pool()
+    #     async with pool.acquire() as conn:
+    #         async with conn.cursor(aiomysql.DictCursor) as cur:
+    #             await cur.execute(
+    #                 "SELECT * FROM user_recipes WHERE user_id=%s AND id=%s",
+    #                 (user_id, recipe_id)
+    #             )
+    #             recipe = await cur.fetchone()
+    #             return recipe
+            
