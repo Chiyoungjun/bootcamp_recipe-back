@@ -205,8 +205,24 @@ async def search_all_public_recipes(q: str = Query(..., min_length=1), db: Sessi
 
 @router.get("/{user_id}/recipes", response_model=List[UserRecipeOut])
 async def get_user_recipes(user_id: str, db: Session = Depends(get_db)):
-    recipes = db.query(UserRecipe).filter(UserRecipe.user_id == user_id).order_by(UserRecipe.created_at.desc()).all()
-    return recipes
+    # UserRecipe와 User (작성자)를 조인하여 ko_name(author_name)도 가져오기
+    results = (
+        db.query(UserRecipe, User.ko_name.label("author_name"))
+        .join(User, UserRecipe.user_id == User.user_id)
+        .filter(UserRecipe.user_id == user_id)
+        .order_by(UserRecipe.created_at.desc())
+        .all()
+    )
+
+    response = []
+    for recipe, author_name in results:
+        recipe_dict = recipe.__dict__.copy()
+        recipe_dict["author_name"] = author_name
+        # 메뉴얼 빈 항목 제거 함수가 있다면 적용
+        filtered_recipe = filter_non_empty_manuals(recipe_dict)
+        response.append(filtered_recipe)
+
+    return response
 
 
 @router.get("/{user_id}/recipes/{recipe_id}", response_model=UserRecipeOut)

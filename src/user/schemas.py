@@ -159,7 +159,7 @@ class UserRecipeUpdate(BaseModel):
 class UserRecipeOut(UserRecipeBase):
     id: int
     user_id: str
-    # author_name: Optional[str] = None ## 오늘 수정
+    author_name: Optional[str] = None ## 오늘 수정
     view_count: int
     avg_rating: float
     rating_count: int
