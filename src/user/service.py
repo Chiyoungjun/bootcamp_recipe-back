@@ -1,6 +1,7 @@
 import os
 import uuid
 import shutil
+import aiofiles
 from typing import List, Optional
 from fastapi import UploadFile
 from db import get_db_pool
@@ -277,10 +278,53 @@ class UserService:
                 print("쿼리 결과:", row)  # <--- 디버그 출력
                 return row
 
-    async def update_user_recipe(self, user_id: str, recipe_id: int, update_data: dict):
+    async def save_image_file(upload_file: UploadFile, dest_path: str):
+    # 업로드 파일 열고 저장
+        with open(dest_path, "wb") as f:
+            content = await upload_file.read()
+            f.write(content)
+
+    
+    async def save_upload_file(self, upload_file: UploadFile, save_dir: str, filename: str) -> str:
+            os.makedirs(save_dir, exist_ok=True)
+            filepath = os.path.join(save_dir, filename)
+            async with aiofiles.open(filepath, "wb") as out_file:
+                while True:
+                    chunk = await upload_file.read(1024)
+                    if not chunk:
+                        break
+                    await out_file.write(chunk)
+            return filepath
+
+    async def update_user_recipe(
+        self,
+        user_id: str,
+        recipe_id: int,
+        update_data: dict,
+        image_file: Optional[UploadFile] = None,
+        manual_imgs: Optional[List[Optional[UploadFile]]] = None,
+    ):
         pool = await get_db_pool()
         async with pool.acquire() as conn:
             async with conn.cursor() as cur:
+                upload_dir = "uploads"  # 예시: 프로젝트 루트 /uploads/ 
+
+                # 대표 이미지 저장
+                if image_file:
+                    filename = f"{uuid.uuid4().hex}_{image_file.filename}"
+                    filepath = await self.save_upload_file(image_file, upload_dir, filename)
+                    update_data["image_url"] = filepath
+
+                # 메뉴얼 이미지 저장
+                if manual_imgs:
+                    for idx, img_file in enumerate(manual_imgs, start=1):
+                        if img_file:
+                            filename = f"{uuid.uuid4().hex}_{img_file.filename}"
+                            filepath = await self.save_upload_file(img_file, upload_dir, filename)
+                            # 웹에서 접근 가능한 경로로 변경(예: /uploads/파일명)
+                            web_path = f"/uploads/{filename}"
+                            update_data[f"MANUAL_IMG{str(idx).zfill(2)}"] = web_path
+
                 valid_keys = {
                     'name', 'description', 'image_url',
                     'MANUAL01', 'MANUAL02', 'MANUAL03', 'MANUAL04', 'MANUAL05',
@@ -293,14 +337,17 @@ class UserService:
                     'MANUAL_IMG16', 'MANUAL_IMG17', 'MANUAL_IMG18', 'MANUAL_IMG19', 'MANUAL_IMG20',
                     'ingredients', 'INFO_ENG', 'INFO_CAR', 'INFO_PRO', 'INFO_FAT', 'INFO_NA', 'RCP_NA_TIP'
                 }
+
                 fields = []
                 values = []
                 for key, value in update_data.items():
                     if key in valid_keys:
                         fields.append(f"{key} = %s")
                         values.append(value)
+
                 if not fields:
                     return
+
                 values.extend([recipe_id, user_id])
                 sql = f"UPDATE user_recipes SET {', '.join(fields)} WHERE id = %s AND user_id = %s"
                 await cur.execute(sql, tuple(values))

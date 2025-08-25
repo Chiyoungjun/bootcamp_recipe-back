@@ -142,6 +142,7 @@ dist
 
 **/__pycache__/
 
-**/upload/
+temp_uploads/
+uploads/
 
 .env

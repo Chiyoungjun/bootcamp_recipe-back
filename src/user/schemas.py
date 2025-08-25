@@ -99,61 +99,60 @@ class UserRecipeCreate(UserRecipeBase):
 
 
 class UserRecipeUpdate(BaseModel):
-    name: Optional[str]
-    description: Optional[str]
-    image_url: Optional[str]
+    name: Optional[str] = None
+    description: Optional[str] = None
+    image_url: Optional[str] = None
 
-    MANUAL01: Optional[str]
-    MANUAL02: Optional[str]
-    MANUAL03: Optional[str]
-    MANUAL04: Optional[str]
-    MANUAL05: Optional[str]
-    MANUAL06: Optional[str]
-    MANUAL07: Optional[str]
-    MANUAL08: Optional[str]
-    MANUAL09: Optional[str]
-    MANUAL10: Optional[str]
-    MANUAL11: Optional[str]
-    MANUAL12: Optional[str]
-    MANUAL13: Optional[str]
-    MANUAL14: Optional[str]
-    MANUAL15: Optional[str]
-    MANUAL16: Optional[str]
-    MANUAL17: Optional[str]
-    MANUAL18: Optional[str]
-    MANUAL19: Optional[str]
-    MANUAL20: Optional[str]
+    MANUAL01: Optional[str] = None
+    MANUAL02: Optional[str] = None
+    MANUAL03: Optional[str] = None
+    MANUAL04: Optional[str] = None
+    MANUAL05: Optional[str] = None
+    MANUAL06: Optional[str] = None
+    MANUAL07: Optional[str] = None
+    MANUAL08: Optional[str] = None
+    MANUAL09: Optional[str] = None
+    MANUAL10: Optional[str] = None
+    MANUAL11: Optional[str] = None
+    MANUAL12: Optional[str] = None
+    MANUAL13: Optional[str] = None
+    MANUAL14: Optional[str] = None
+    MANUAL15: Optional[str] = None
+    MANUAL16: Optional[str] = None
+    MANUAL17: Optional[str] = None
+    MANUAL18: Optional[str] = None
+    MANUAL19: Optional[str] = None
+    MANUAL20: Optional[str] = None
 
-    MANUAL_IMG01: Optional[str]
-    MANUAL_IMG02: Optional[str]
-    MANUAL_IMG03: Optional[str]
-    MANUAL_IMG04: Optional[str]
-    MANUAL_IMG05: Optional[str]
-    MANUAL_IMG06: Optional[str]
-    MANUAL_IMG07: Optional[str]
-    MANUAL_IMG08: Optional[str]
-    MANUAL_IMG09: Optional[str]
-    MANUAL_IMG10: Optional[str]
-    MANUAL_IMG11: Optional[str]
-    MANUAL_IMG12: Optional[str]
-    MANUAL_IMG13: Optional[str]
-    MANUAL_IMG14: Optional[str]
-    MANUAL_IMG15: Optional[str]
-    MANUAL_IMG16: Optional[str]
-    MANUAL_IMG17: Optional[str]
-    MANUAL_IMG18: Optional[str]
-    MANUAL_IMG19: Optional[str]
-    MANUAL_IMG20: Optional[str]
+    MANUAL_IMG01: Optional[str] = None
+    MANUAL_IMG02: Optional[str] = None
+    MANUAL_IMG03: Optional[str] = None
+    MANUAL_IMG04: Optional[str] = None
+    MANUAL_IMG05: Optional[str] = None
+    MANUAL_IMG06: Optional[str] = None
+    MANUAL_IMG07: Optional[str] = None
+    MANUAL_IMG08: Optional[str] = None
+    MANUAL_IMG09: Optional[str] = None
+    MANUAL_IMG10: Optional[str] = None
+    MANUAL_IMG11: Optional[str] = None
+    MANUAL_IMG12: Optional[str] = None
+    MANUAL_IMG13: Optional[str] = None
+    MANUAL_IMG14: Optional[str] = None
+    MANUAL_IMG15: Optional[str] = None
+    MANUAL_IMG16: Optional[str] = None
+    MANUAL_IMG17: Optional[str] = None
+    MANUAL_IMG18: Optional[str] = None
+    MANUAL_IMG19: Optional[str] = None
+    MANUAL_IMG20: Optional[str] = None
 
-    # category: Optional[str]
-    ingredients: Optional[str]
+    ingredients: Optional[str] = None
 
-    INFO_ENG: Optional[str]
-    INFO_CAR: Optional[str]
-    INFO_PRO: Optional[str]
-    INFO_FAT: Optional[str]
-    INFO_NA: Optional[str]
-    RCP_NA_TIP: Optional[str]
+    INFO_ENG: Optional[str] = None
+    INFO_CAR: Optional[str] = None
+    INFO_PRO: Optional[str] = None
+    INFO_FAT: Optional[str] = None
+    INFO_NA: Optional[str] = None
+    RCP_NA_TIP: Optional[str] = None
 
 
 class UserRecipeOut(UserRecipeBase):
