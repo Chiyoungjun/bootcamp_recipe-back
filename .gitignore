@@ -146,3 +146,5 @@ temp_uploads/
 uploads/
 
 .env
+src/ai/recipes_with_macro9_v2.csv
+src/20250826_223732_macro9_ml
