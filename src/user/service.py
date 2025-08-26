@@ -62,6 +62,7 @@ class UserService:
         height = user_info.get("height")
         weight = user_info.get("weight")
         gender = user_info.get("gender")
+        print(f"Signup gender value: {gender!r}")
         preferred_food = user_info.get("preferred_food")
         preferred_tags = user_info.get("preferred_tags")
 

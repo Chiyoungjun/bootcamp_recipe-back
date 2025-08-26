@@ -8,7 +8,7 @@ import os
 from sqlalchemy import text
 
 from .service import UserService
-from .schemas import UserRecipeOut, UserRecipeUpdate
+from .schemas import UserRecipeOut, UserRecipeUpdate, UserCreate
 from user.models import UserRecipe, User
 from database import get_db
 from db import get_db_pool
