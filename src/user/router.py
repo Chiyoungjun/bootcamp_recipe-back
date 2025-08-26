@@ -158,11 +158,11 @@ async def create_user_recipe(
     MANUAL_IMG19: Optional[UploadFile] = File(None),
     MANUAL_IMG20: Optional[UploadFile] = File(None),
 ):
-    print("==== [라우터 진입] ====")
-    for i in range(1, 21):
-        print(f"MANUAL{str(i).zfill(2)}:", locals().get(f"MANUAL{str(i).zfill(2)}"))
-        img = locals().get(f"MANUAL_IMG{str(i).zfill(2)}")
-        print(f"MANUAL_IMG{str(i).zfill(2)}:", img.filename if img and hasattr(img, "filename") else img)
+    # print("==== [라우터 진입] ====")
+    # for i in range(1, 21):
+    #     print(f"MANUAL{str(i).zfill(2)}:", locals().get(f"MANUAL{str(i).zfill(2)}"))
+    #     img = locals().get(f"MANUAL_IMG{str(i).zfill(2)}")
+    #     print(f"MANUAL_IMG{str(i).zfill(2)}:", img.filename if img and hasattr(img, "filename") else img)
 
     manual_texts = [
         MANUAL01 or "", MANUAL02 or "", MANUAL03 or "", MANUAL04 or "", MANUAL05 or "",

@@ -6,7 +6,14 @@ if __name__ == "__main__":
     with SessionLocal() as db:
         recipes = db.query(Recipe).all()
         for recipe in recipes:
-            # 머신러닝 카테고리 예측해서 기존 category 컬럼에 덮어쓰기
-            recipe.category = predict_recipe_category(recipe.name, recipe.description)
+            old_cat = recipe.category
+            new_cat = predict_recipe_category(recipe.name, recipe.description, "", recipe.category or "")
+            print(f"Recipe ID {recipe.id}: {old_cat} -> {new_cat}")
+            
+            if old_cat != new_cat:
+                recipe.category = new_cat
+            else:
+                print(f"Recipe ID {recipe.id} 카테고리 변화 없음")
+        
         db.commit()
-    print("모든 레시피 category 값을 AI 결과로 덮어썼음!")
+        print("커밋 완료")

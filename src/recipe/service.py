@@ -6,7 +6,8 @@ from sqlalchemy.exc import IntegrityError
 from datetime import datetime, timedelta, date
 from fastapi import HTTPException
 from collections import Counter
-from ai.ai_model import category_model, vectorizer, manual_map
+from ai.ai_model import category_model, feature_builder, label_encoder
+
 
 # recipe/models.py
 from .models import (
@@ -28,13 +29,24 @@ translator = Translator()
 
 API_KEY = "62f25c3fe3fb40deb80c"  # API 키 꼭 선언해 주세요
 
-def predict_recipe_category(name: str, description: str) -> str:
-    text = (name or "") + " " + (description or "")
-    X = vectorizer.transform([text])
+def predict_recipe_category(name: str, description: str, way: str = "", category: str = "") -> str:
+    import pandas as pd
+
+    df = pd.DataFrame([{
+        feature_builder.columns_['name']: name,
+        feature_builder.columns_['desc']: description,
+        feature_builder.columns_['way']: way,
+        feature_builder.columns_['category']: category
+    }])
+
+    X, _ = feature_builder.transform(df)
     cluster_num = int(category_model.predict(X)[0])
-    if cluster_num in [3, 11, 12, 13]:
-        cluster_num = 2
-    return manual_map.get(cluster_num, str(cluster_num))
+    predicted_label = label_encoder.inverse_transform([cluster_num])[0]
+
+    return predicted_label
+
+
+
 
 def parse_ingredients(parts_dtl: str) -> list:
     if not parts_dtl:

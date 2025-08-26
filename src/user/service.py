@@ -189,6 +189,10 @@ class UserService:
                 "RCP_NA_TIP": safe_get(recipe_data, "RCP_NA_TIP"),
                 "image_url": safe_get(recipe_data, "image_url"),
             }
+            print("서비스 create_user_recipe 호출")
+            print(f"user_id: {user_id}")
+            print(f"form_data RCP_NA_TIP: {form_data['RCP_NA_TIP']}")
+
 
             for i, text in enumerate(manual_texts, start=1):
                 form_data[f"MANUAL{str(i).zfill(2)}"] = text
